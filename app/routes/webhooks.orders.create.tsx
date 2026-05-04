@@ -150,31 +150,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             console.error("Error inserting donation record:", dbError);
                         }
 
-                        // ── Fix 3: Tag the order with preset_donation ──────────
-                        if (admin) {
-                            try {
-                                const existingTags = order.tags
-                                    ? order.tags.split(",").map((t: string) => t.trim()).filter(Boolean)
-                                    : [];
-                                if (!existingTags.includes("preset_donation")) {
-                                    existingTags.push("preset_donation");
-                                }
-                                await admin.graphql(
-                                    `#graphql
-                                    mutation orderUpdate($input: OrderInput!) {
-                                        orderUpdate(input: $input) {
-                                            order { id tags }
-                                            userErrors { field message }
-                                        }
-                                    }`,
-                                    { variables: { input: { id: orderIdStr, tags: existingTags } } }
-                                );
-                                console.log(`[Webhook] Tagged order ${order.name} with preset_donation`);
-                            } catch (tagErr) {
-                                console.error("[Webhook] Failed to tag preset_donation order:", tagErr);
-                            }
-                        }
-
+                        // ── Consolidation Fix: Tagging moved to STAGING LOGIC block ──
+                        // This prevents multiple order updates and ensures all tags are applied together.
                         // ── Consolidation Fix: Email sending moved to STAGING LOGIC block ──
                         // This prevents multiple emails when both campaign and other donations exist.
                     }
@@ -507,6 +484,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             type: "roundup",
                         },
                     });
+                } else if (hasCampaignDonation) {
+                    // Campaign donations are logged in the 'Donation' table. 
+                    // Skip PosDonationLog to avoid duplicates for preset donations.
+                    console.log(`[Webhook] Order ${order.name} is a Preset Donation. Skipping POS log.`);
                 } else {
                     // POS donations only
                     await db.posDonationLog.upsert({
@@ -560,6 +541,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     if (isPosDonationSource) {
                         const baseTag = effectiveSettings.orderTag || "galaxy_pos_donation";
                         if (!existingTags.includes(baseTag)) existingTags.push(baseTag);
+                    }
+
+                    if (hasCampaignDonation) {
+                        if (!existingTags.includes("preset_donation")) existingTags.push("preset_donation");
+                        
+                        const customerId = (order as any).customer_gql_id || (order.customer?.id ? `gid://shopify/Customer/${order.customer.id}` : null);
+                        if (customerId) {
+                            await admin.graphql(`#graphql
+                                mutation tagsAdd($id: ID!, $tags: [String!]!) { tagsAdd(id: $id, tags: $tags) { node { id } } }`,
+                                { variables: { id: customerId, tags: ["preset_donor"] } }
+                            );
+                        }
                     }
 
                     const currentAttrs = (order.note_attributes || [])
