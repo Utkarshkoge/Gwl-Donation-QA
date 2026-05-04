@@ -161,8 +161,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     }
                 }
             }
-        }
-    } catch (err) {
+        } catch (err) {
         console.error("Error processing refunds/create webhook:", err);
     }
 
