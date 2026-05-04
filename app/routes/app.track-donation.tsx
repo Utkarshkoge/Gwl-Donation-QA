@@ -70,30 +70,56 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             const presetDonations = await prisma.donation.findMany({
                 where: {
                     ...campaignWhere,
-                    campaign: { shop }
+                    campaign: { shop },
+                    status: "active"
                 },
                 select: { amount: true, createdAt: true }
             });
             allDonations = [...allDonations, ...presetDonations];
         }
 
-        // Fetch POS & Round-Up Donations
-        if (typeFilter === "all" || typeFilter === "pos" || typeFilter === "roundup") {
-            const rawLogs = await prisma.posDonationLog.findMany({ where: { shop } });
+        // Fetch POS Donations
+        if (typeFilter === "all" || typeFilter === "pos") {
+            const rawLogs = await prisma.posDonationLog.findMany({ 
+                where: { 
+                    shop,
+                    status: "active"
+                } 
+            });
 
             const filteredPos = rawLogs.filter((l: any) => {
                 const dDate = new Date(l.createdAt);
-                if (dDate < startDate || dDate >= endDate) return false;
-                if (typeFilter === "all") return true;
-                return l.type === typeFilter;
+                return dDate >= startDate && dDate < endDate;
             });
 
             allDonations = [...allDonations, ...filteredPos.map((d: any) => ({ amount: d.donationAmount, createdAt: new Date(d.createdAt) }))];
         }
 
+        // Fetch Round-Up Donations
+        if (typeFilter === "all" || typeFilter === "roundup") {
+            const rawRoundup = await prisma.roundUpDonationLog.findMany({ 
+                where: { 
+                    shop,
+                    status: "active"
+                } 
+            });
+
+            const filteredRoundup = rawRoundup.filter((l: any) => {
+                const dDate = new Date(l.createdAt);
+                return dDate >= startDate && dDate < endDate;
+            });
+
+            allDonations = [...allDonations, ...filteredRoundup.map((d: any) => ({ amount: d.donationAmount, createdAt: new Date(d.createdAt) }))];
+        }
+
         // Fetch Recurring Donations
         if (typeFilter === "all" || typeFilter === "recurring") {
-            const rawRecurring = await prisma.recurringDonationLog.findMany({ where: { shop } });
+            const rawRecurring = await prisma.recurringDonationLog.findMany({ 
+                where: { 
+                    shop,
+                    status: "active"
+                } 
+            });
             const filteredRecurring = rawRecurring.filter((l: any) => {
                 const dDate = new Date(l.createdAt);
                 return dDate >= startDate && dDate < endDate;

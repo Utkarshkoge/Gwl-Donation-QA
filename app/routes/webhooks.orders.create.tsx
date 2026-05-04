@@ -42,6 +42,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const customerEmail = payload.email || payload.contact_email || payload.customer?.email || "No Email provided";
         const currency = payload.currency || "USD";
         const createdAt = payload.created_at ? new Date(payload.created_at) : new Date();
+        
+        let hasCampaignDonation = false;
+        let donationAmtCents = 0;
 
         // -------------------------
         // HEAD LOGIC: Campaign Donations 
@@ -49,6 +52,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (payload.line_items && Array.isArray(payload.line_items)) {
             for (const item of payload.line_items) {
                 if (!item.product_id) continue;
+
+                // Skip global recurring donation product here — it's handled in STAGING LOGIC
+                const config = await (db as any).recurringDonationConfig.findUnique({ where: { shop } });
+                if (config && String(item.product_id) === String(config.productId)) {
+                    console.log(`[Webhook] Skipping campaign logic for global donation product: ${item.product_id}`);
+                    continue;
+                }
 
                 try {
                     const productIdStr = item.product_id.toString();
@@ -102,6 +112,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         const basePrice = parseFloat(item.price || "0") * (item.quantity || 1);
                         const lineDiscount = parseFloat(item.total_discount || "0");
                         const donationAmount = Math.max(0, basePrice - lineDiscount);
+                        donationAmtCents += Math.round(donationAmount * 100);
                         const donationAmtFormatted = donationAmount.toFixed(2);
 
                         try {
@@ -130,6 +141,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                                 },
                             });
                             console.log(`[Webhook] Inserted/Updated donation mapping for Campaign ${matchingCampaign.id}`);
+                            hasCampaignDonation = true;
+                            // Set a descriptive name for consolidated email
+                            if (!hasDirectDonationProduct && !hasRoundUpDonation) {
+                                directDonationName = matchingCampaign.name || "Preset Donation";
+                            }
                         } catch (dbError) {
                             console.error("Error inserting donation record:", dbError);
                         }
@@ -159,33 +175,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             }
                         }
 
-                        // ── Fix 4: Send donation confirmation email ────────────
-                        try {
-                            const planSub = await db.planSubscription.findUnique({ where: { shop } });
-                            const planName = planSub?.plan || "basic";
-                            const currentCustomerEmail = payload.email || payload.contact_email || payload.customer?.email || "No Email provided";
-
-                            if (currentCustomerEmail !== "No Email provided" && checkFeatureAccess(planName, "canSendReceiptEmail")) {
-                                const emailResult = await sendDonationReceipt({
-                                    email: currentCustomerEmail,
-                                    name: customerName,
-                                    amount: donationAmtFormatted,
-                                    orderNumber: order.name || orderId,
-                                    shop,
-                                    donationName: matchingCampaign.name,
-                                    frequency: "One-time",
-                                });
-                                if (emailResult.success) {
-                                    console.log(`[Webhook] Donation confirmation email sent to ${currentCustomerEmail} for order ${order.name}`);
-                                } else {
-                                    console.error(`[Webhook] Failed to send email:`, emailResult.error);
-                                }
-                            } else {
-                                console.log(`[Webhook] Email skipped: email=${currentCustomerEmail}, plan=${planName}`);
-                            }
-                        } catch (emailErr) {
-                            console.error("[Webhook] Error sending donation email:", emailErr);
-                        }
+                        // ── Consolidation Fix: Email sending moved to STAGING LOGIC block ──
+                        // This prevents multiple emails when both campaign and other donations exist.
                     }
                 } catch (error) {
                     console.error("Error processing line item:", error);
@@ -291,7 +282,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
 
         let isApplicable = false;
-        let donationAmtCents = 0;
+        // donationAmtCents already initialized at top
         let samplePriceCents = 0;
         const totalCents = parseFloat(order.total_price || 0) * 100;
         const minValCents = (effectiveSettings.minimumValue || 0) * 100;
@@ -351,7 +342,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
         }
 
-        if (isApplicable) {
+        if (isApplicable || hasCampaignDonation) {
+            // ── Deduplication Fix: Check if an email was already sent for this order ──
+            const [posSent, recSent, roundSent] = await Promise.all([
+                (db as any).posDonationLog.findFirst({ where: { orderId: orderIdStr, receiptStatus: "sent" } }),
+                (db as any).recurringDonationLog.findFirst({ where: { orderId: orderIdStr, receiptStatus: "sent" } }),
+                (db as any).roundUpDonationLog.findFirst({ where: { orderId: orderIdStr, receiptStatus: "sent" } }),
+            ]);
+
+            if (posSent || recSent || roundSent) {
+                console.log(`[Webhook] Email deduplication: Receipt already sent for Order ${order.name}. Skipping email logic.`);
+                // However, we still want to finish the DB sync/tagging if needed
+                // But usually, if it was sent, everything else is done too.
+                return new Response("OK", { status: 200 });
+            }
+
             const donationAmtFormatted = (donationAmtCents / 100).toFixed(2);
             let emailStatus = "pending";
             let sentDate = null;
@@ -557,16 +562,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         if (!existingTags.includes(baseTag)) existingTags.push(baseTag);
                     }
 
-                    const currentAttrs = (order.note_attributes || []).map((a: any) => ({ key: a.name, value: a.value }));
-                    if (!currentAttrs.some((a: any) => a.key === "POS Donation Amount")) {
-                        currentAttrs.push({ key: "POS Donation Amount", value: `${order.currency || "$"}${donationAmtFormatted}` });
+                    const currentAttrs = (order.note_attributes || [])
+                        .filter((a: any) => a.name !== "POS Donation Amount")
+                        .map((a: any) => ({ key: a.name, value: a.value }));
+                    
+                    let donationLabel = "Donation Amount";
+                    let donationTypeLabel = "Donation Type";
+                    let typeValue = "POS";
+                    
+                    if (hasDirectDonationProduct) {
+                        typeValue = frequency === "one_time" ? "One-time" : (frequency === "monthly" ? "Monthly" : "Weekly");
+                    } else if (hasRoundUpDonation) {
+                        typeValue = "Round-Up";
+                    } else if (hasCampaignDonation) {
+                        typeValue = "Preset";
                     }
+
+                    // Remove existing if any to ensure fresh values
+                    const finalAttrs = currentAttrs.filter(a => a.key !== donationLabel && a.key !== donationTypeLabel);
+                    
+                    finalAttrs.push({ key: donationLabel, value: `${order.currency || "$"}${donationAmtFormatted}` });
+                    finalAttrs.push({ key: donationTypeLabel, value: typeValue });
 
                     await admin.graphql(`#graphql
                         mutation orderUpdate($input: OrderInput!) { orderUpdate(input: $input) { order { id } } }`,
-                        { variables: { input: { id: orderIdStr, tags: existingTags, customAttributes: currentAttrs } } }
+                        { variables: { input: { id: orderIdStr, tags: existingTags, customAttributes: finalAttrs } } }
                     );
-                    console.log(`[Webhook] Success: Handled Order ${order.name} (${donationAmtFormatted})`);
+                    console.log(`[Webhook] Success: Handled Order ${order.name} (${donationAmtFormatted}) Type: ${typeValue}`);
                 } catch (e) {
                     console.error("Tagging Error:", e);
                 }

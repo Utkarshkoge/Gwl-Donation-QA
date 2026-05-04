@@ -74,7 +74,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }`,
             {
                 variables: {
-                    name: `Galaxy Easy Donations - ${planDetail.name} Plan`,
+                    name: `Donations: Subscriptions & Receipts - ${planDetail.name} Plan`,
                     returnUrl,
                     test: process.env.SHOPIFY_BILLING_TEST_MODE === "true",
                     lineItems: [

@@ -74,6 +74,7 @@ model Donation {
   message          String?
   shopifyProductId String?
   shopifyVariantId String?
+  status           String   @default("active")
   createdAt        DateTime @default(now())
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 

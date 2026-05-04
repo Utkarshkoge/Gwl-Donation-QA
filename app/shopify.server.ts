@@ -9,9 +9,9 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 
-export const MONTHLY_PLAN_BASIC = "Galaxy Easy Donations - Basic Plan";
-export const MONTHLY_PLAN_ADVANCED = "Galaxy Easy Donations - Advanced Plan";
-export const MONTHLY_PLAN_PRO = "Galaxy Easy Donations - Pro Plan";
+export const MONTHLY_PLAN_BASIC = "Donations: Subscriptions & Receipts - Basic Plan";
+export const MONTHLY_PLAN_ADVANCED = "Donations: Subscriptions & Receipts - Advanced Plan";
+export const MONTHLY_PLAN_PRO = "Donations: Subscriptions & Receipts - Pro Plan";
 
 console.log("Initializing Shopify App with API Key:", process.env.SHOPIFY_API_KEY);
 console.log("App URL:", process.env.SHOPIFY_APP_URL);

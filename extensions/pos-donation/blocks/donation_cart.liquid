@@ -3,6 +3,7 @@
 {% endcomment %}
 
 {% assign global_enabled = app.metafields.common.enabled.value %}
+{% if cart.item_count > 0 %}
 <div
   id="donation-cart-block-{{ block.id }}"
   class="donation-cart-block dc-premium-outer"
@@ -240,6 +241,7 @@
     }
   </style>
 </div>
+{% endif %}
 
 <script src="{{ 'donation-cart.js' | asset_url }}" defer></script>
 

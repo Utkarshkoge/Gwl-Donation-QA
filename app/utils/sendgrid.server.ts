@@ -262,7 +262,7 @@ export async function sendPlanChangeConfirmation({
     <p style="font-size: 15px; color: #6D7175;">If you didn't authorize this change, please contact our support immediately.</p>
 
     <div style="border-top: 1px solid #eee; margin-top: 32px; padding-top: 24px; text-align: center; font-size: 14px; color: #999;">
-      &copy; ${new Date().getFullYear()} Galaxy Easy Donations. All rights reserved.
+      &copy; ${new Date().getFullYear()} Donations: Subscriptions & Receipts. All rights reserved.
     </div>
   </div>
   `;
@@ -270,7 +270,7 @@ export async function sendPlanChangeConfirmation({
     const msg = {
         to: email,
         from: verifiedFromEmail,
-        subject: `Your Galaxy Easy Donations plan has been updated to ${planName.charAt(0).toUpperCase() + planName.slice(1)}`,
+        subject: `Your Donations: Subscriptions & Receipts plan has been updated to ${planName.charAt(0).toUpperCase() + planName.slice(1)}`,
         html: htmlContent,
     };
 

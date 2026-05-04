@@ -204,37 +204,70 @@ export default function EmailSettingsPage() {
     });
 
     // Snapshot of initial settings for dirty-state detection
-    const [initialSettings] = useState<EmailSettings>(() => ({ ...settings }));
-
-    const hasChanges = Object.keys(settings).some(
-        (key) => settings[key as keyof EmailSettings] !== initialSettings[key as keyof EmailSettings]
-    );
-
-    const [selectedTab, setSelectedTab] = useState("receipt");
+    const [initialSettings, setInitialSettings] = useState<EmailSettings>(() => ({ ...settings }));
 
     const isSaving =
         fetcher.state === "submitting" && fetcher.formMethod === "POST";
 
     useEffect(() => {
-        if (fetcher.data?.status === "success") {
+        if (fetcher.data?.status === "success" && !isSaving) {
             shopify.toast.show("Email settings saved successfully");
+            setInitialSettings({ ...settings });
         }
-    }, [fetcher.data, shopify]);
+    }, [fetcher.data, shopify, isSaving, settings]);
+
+    const hasChanges = Object.keys(settings).some(
+        (key) => settings[key as keyof EmailSettings] !== initialSettings[key as keyof EmailSettings]
+    );
+
+    const [errors, setErrors] = useState<Record<string, string>>({});
+
+    const validate = () => {
+        const newErrors: Record<string, string> = {};
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!settings.contactEmail) {
+            newErrors.contactEmail = "Contact email is required";
+        } else if (!emailRegex.test(settings.contactEmail)) {
+            newErrors.contactEmail = "Invalid email format";
+        }
+
+        if (settings.ccEmail && !emailRegex.test(settings.ccEmail)) {
+            newErrors.ccEmail = "Invalid CC email format";
+        }
+
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
 
     const handleSettingChange = useCallback(
         (field: keyof EmailSettings, value: string) => {
             setSettings((prev) => ({ ...prev, [field]: value }));
+            if (errors[field]) {
+                setErrors(prev => {
+                    const next = { ...prev };
+                    delete next[field];
+                    return next;
+                });
+            }
         },
-        [],
+        [errors],
     );
 
     const handleSave = useCallback(() => {
+        if (!validate()) {
+            shopify.toast.show("Please fix the errors before saving", { isError: true });
+            return;
+        }
         const formData = new FormData();
         Object.entries(settings).forEach(([key, value]) => {
             formData.append(key, value);
         });
         fetcher.submit(formData, { method: "POST" });
-    }, [settings, fetcher]);
+    }, [settings, fetcher, shopify]);
+
+    const isInvalid = Object.keys(errors).length > 0;
+    const [selectedTab, setSelectedTab] = useState("receipt");
 
     return (
         <s-page heading="Email Configuration Settings">
@@ -242,7 +275,7 @@ export default function EmailSettingsPage() {
                 slot="primary-action"
                 variant="primary"
                 onClick={handleSave}
-                disabled={isSaving || !hasChanges}
+                disabled={isSaving || !hasChanges || isInvalid}
                 {...(isSaving ? { loading: true } : {})}
             >
                 {isSaving ? "Saving..." : (hasChanges ? "Save" : "No Changes")}
@@ -263,20 +296,22 @@ export default function EmailSettingsPage() {
                             <s-box>
                                 <div style={{ marginBottom: "16px" }}>
                                     <s-text-field
-                                        label="Your Contact Email"
-                                        value={settings.contactEmail}
-                                        onChange={(e: any) => handleSettingChange("contactEmail", e.target.value)}
-                                    />
+                                         label="Your Contact Email"
+                                         value={settings.contactEmail}
+                                         error={errors.contactEmail}
+                                         onChange={(e: any) => handleSettingChange("contactEmail", e.target.value)}
+                                     />
                                     <div style={{ marginTop: "4px" }}>
                                         <s-text color="subdued">Customers who reply to the email will reach you at this address.</s-text>
                                     </div>
                                 </div>
                                 <div style={{ marginBottom: "16px" }}>
                                     <s-text-field
-                                        label="Additional/CC Email ID (Optional)"
-                                        value={settings.ccEmail}
-                                        onChange={(e: any) => handleSettingChange("ccEmail", e.target.value)}
-                                    />
+                                         label="Additional/CC Email ID (Optional)"
+                                         value={settings.ccEmail}
+                                         error={errors.ccEmail}
+                                         onChange={(e: any) => handleSettingChange("ccEmail", e.target.value)}
+                                     />
                                 </div>
                                 <div style={{ marginBottom: "16px" }}>
                                     <div style={{ marginBottom: "8px" }}>

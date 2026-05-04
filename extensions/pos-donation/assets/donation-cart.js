@@ -264,6 +264,12 @@
       try {
         cart = await getCart();
         donationLine = findDonationLine(cart, numericVariantIds);
+
+        // Hide if cart empty
+        if (!cart || !cart.items || cart.items.length === 0) {
+          container.style.display = "none";
+          return;
+        }
       } catch (_) {
         // Non-fatal — render add mode
       }

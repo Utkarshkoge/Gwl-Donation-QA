@@ -15,6 +15,8 @@ import {
     EmptyState,
     Icon,
 } from "@shopify/polaris";
+import { useAppBridge } from "@shopify/app-bridge-react";
+import { useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import { performSubscriptionAction } from "../utils/subscription-actions.server";
 
@@ -115,6 +117,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function RecurringSubscriptionsPage() {
     const { contracts } = useLoaderData<typeof loader>();
     const fetcher = useFetcher<any>();
+    const shopify = useAppBridge();
+
+    useEffect(() => {
+        if (fetcher.data?.message) {
+            shopify.toast.show(fetcher.data.message);
+        }
+    }, [fetcher.data, shopify]);
 
     const resourceName = {
         singular: "subscription",

@@ -26,13 +26,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         let existingLog = await (db as any).posDonationLog.findUnique({
             where: { orderId: orderIdStr },
         });
-        let logType: 'pos' | 'recurring' = 'pos';
+        let logType: 'pos' | 'recurring' | 'roundup' = 'pos';
 
         if (!existingLog) {
-            existingLog = await (db as any).recurringDonationLog.findUnique({
-                where: { orderId: orderIdStr },
+            existingLog = await (db as any).recurringDonationLog.findFirst({
+                where: { orderId: orderIdStr, shop: shop },
             });
-            logType = 'recurring';
+            if (existingLog) logType = 'recurring';
+        }
+
+        if (!existingLog) {
+            existingLog = await (db as any).roundUpDonationLog.findFirst({
+                where: { orderId: orderIdStr, shop: shop },
+            });
+            if (existingLog) logType = 'roundup';
         }
 
         if (existingLog) {
@@ -47,7 +54,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     data: { status: "refunded" },
                 });
             }
+        }
 
+        // Also check for Preset Donations (db.donation)
+        const presetDonations = await db.donation.findMany({
+            where: { orderId: refund.order_id.toString() }
+        });
+        if (presetDonations.length > 0) {
+            await db.donation.updateMany({
+                where: { orderId: refund.order_id.toString() },
+                data: { status: "refunded" }
+            });
+            console.log(`[Webhook] Refunded ${presetDonations.length} preset donation(s) for order ${refund.order_id}`);
+        }
+
+        // Also check for Round-Up Donations
+        const roundupDonations = await db.roundUpDonationLog.findMany({
+            where: { orderId: refund.order_id.toString() }
+        });
+        if (roundupDonations.length > 0) {
+            await db.roundUpDonationLog.updateMany({
+                where: { orderId: refund.order_id.toString() },
+                data: { status: "refunded" }
+            });
+            console.log(`[Webhook] Refunded ${roundupDonations.length} round-up donation(s) for order ${refund.order_id}`);
+        }
+
+        if (existingLog || presetDonations.length > 0 || roundupDonations.length > 0) {
             if (admin) {
                 // We need to fetch the order details first to get email/name
                 const orderResponse = await admin.graphql(
@@ -70,13 +103,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 const orderData = await orderResponse.json();
                 const order = orderData.data?.order;
 
-                if (order && order.email) {
+                if (order && order.email && existingLog) {
                     const customerName = order.billingAddress ? `${order.billingAddress.firstName || ""} ${order.billingAddress.lastName || ""}`.trim() : "";
                     try {
                         if (checkFeatureAccess(plan, "canSendRefundEmail")) {
                             const freqLabel = logType === 'recurring'
-                                ? (existingLog.frequency === "weekly" ? "Weekly" : existingLog.frequency === "monthly" ? "Monthly" : "One-time")
-                                : "One-time";
+                            ? (existingLog.frequency === "weekly" ? "Weekly" : existingLog.frequency === "monthly" ? "Monthly" : "One-time")
+                            : (logType === 'roundup' ? "Round-Up" : "Donation");
 
                             await sendDonationReceipt({
                                 email: order.email,
@@ -99,14 +132,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
                 if (!existingTags.includes("donation_refunded")) {
                     existingTags.push("donation_refunded");
+                }
+                if (!existingTags.includes("Refunded")) {
+                    existingTags.push("Refunded");
+                }
 
-                    const input = {
-                        id: orderIdStr,
-                        tags: existingTags.join(","),
-                    };
+                const input = {
+                    id: orderIdStr,
+                    tags: existingTags.join(","),
+                };
 
-                    const updateResponse = await admin.graphql(
-                        `#graphql
+                const updateResponse = await admin.graphql(
+                    `#graphql
             mutation orderUpdate($input: OrderInput!) {
               orderUpdate(input: $input) {
                 userErrors {

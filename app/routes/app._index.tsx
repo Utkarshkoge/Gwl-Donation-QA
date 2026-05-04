@@ -72,15 +72,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     campaignsCount
   ] = await Promise.all([
     prisma.donation.aggregate({
-      where: { campaign: { shop } },
+      where: { campaign: { shop }, status: "active" },
       _sum: { amount: true }
     }),
     prisma.donation.aggregate({
-      where: { campaign: { shop }, createdAt: { gte: last7DaysDate } },
+      where: { campaign: { shop }, createdAt: { gte: last7DaysDate }, status: "active" },
       _sum: { amount: true }
     }),
-    prisma.posDonationLog.findMany({ where: { shop } }),
-    prisma.recurringDonationLog.findMany({ where: { shop } }),
+    prisma.posDonationLog.findMany({ where: { shop, status: "active" } }),
+    prisma.recurringDonationLog.findMany({ where: { shop, status: "active" } }),
     prisma.appSettings.findUnique({ where: { shop } }),
     prisma.posDonationSettings.findUnique({ where: { shop } }),
     prisma.roundUpDonationSettings.findUnique({ where: { shop } }),
@@ -88,7 +88,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   ]);
 
   // Fetch roundup stats from dedicated table
-  const roundupLogs = await prisma.roundUpDonationLog.findMany({ where: { shop } });
+  const roundupLogs = await prisma.roundUpDonationLog.findMany({ where: { shop, status: "active" } });
 
   // Aggregate POS stats (only POS entries now, roundup is separate)
   const allPosLogs = posLogs as any[];

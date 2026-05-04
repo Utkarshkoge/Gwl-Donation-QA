@@ -23,13 +23,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         let existingLog = await (db as any).posDonationLog.findUnique({
             where: { orderId: orderIdStr },
         });
-        let logType: 'pos' | 'recurring' = 'pos';
+        let logType: 'pos' | 'recurring' | 'roundup' = 'pos';
 
         if (!existingLog) {
-            existingLog = await (db as any).recurringDonationLog.findUnique({
-                where: { orderId: orderIdStr },
+            existingLog = await (db as any).recurringDonationLog.findFirst({
+                where: { orderId: orderIdStr, shop: shop },
             });
-            logType = 'recurring';
+            if (existingLog) logType = 'recurring';
+        }
+
+        if (!existingLog) {
+            existingLog = await (db as any).roundUpDonationLog.findFirst({
+                where: { orderId: orderIdStr, shop: shop },
+            });
+            if (existingLog) logType = 'roundup';
         }
 
         if (existingLog) {
@@ -44,17 +51,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     data: { status: "cancelled" },
                 });
             }
+        }
 
+        // Also check for Preset Donations (db.donation)
+        const presetDonations = await db.donation.findMany({
+            where: { orderId: order.id.toString() }
+        });
+        if (presetDonations.length > 0) {
+            await db.donation.updateMany({
+                where: { orderId: order.id.toString() },
+                data: { status: "cancelled" }
+            });
+            console.log(`[Webhook] Cancelled ${presetDonations.length} preset donation(s) for order ${order.id}`);
+        }
+
+        // Also check for Round-Up Donations
+        const roundupDonations = await db.roundUpDonationLog.findMany({
+            where: { orderId: order.id.toString() }
+        });
+        if (roundupDonations.length > 0) {
+            await db.roundUpDonationLog.updateMany({
+                where: { orderId: order.id.toString() },
+                data: { status: "cancelled" }
+            });
+            console.log(`[Webhook] Cancelled ${roundupDonations.length} round-up donation(s) for order ${order.id}`);
+        }
+
+        if (existingLog || presetDonations.length > 0 || roundupDonations.length > 0) {
             // Trigger Cancellation Email
             try {
                 const customerEmail = order.email || order.contact_email || order.customer?.email;
                 const customerName = order.customer ? `${order.customer.first_name || ""} ${order.customer.last_name || ""}`.trim() : (order.billing_address?.name || "");
 
-                if (customerEmail) {
+                if (customerEmail && existingLog) {
                     if (checkFeatureAccess(plan, "canSendCancelEmail")) {
                         const freqLabel = logType === 'recurring'
                             ? (existingLog.frequency === "weekly" ? "Weekly" : existingLog.frequency === "monthly" ? "Monthly" : "One-time")
-                            : "One-time";
+                            : (logType === 'roundup' ? "Round-Up" : "Donation");
 
                         await sendDonationReceipt({
                             email: customerEmail,
@@ -77,6 +110,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 const existingTags = order.tags ? order.tags.split(',').map((t: string) => t.trim()) : [];
                 if (!existingTags.includes("donation_refunded")) {
                     existingTags.push("donation_refunded");
+                }
+                if (!existingTags.includes("Refunded")) {
+                    existingTags.push("Refunded");
                 }
 
                 const input = {
