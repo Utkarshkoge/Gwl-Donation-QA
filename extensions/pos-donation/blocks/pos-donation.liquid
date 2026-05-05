@@ -24,21 +24,34 @@
         {% assign calculated_donation_cents = settings.donationValue | times: 100 %}
       {% endif %}
     {% endif %}
-  {% elsif request.page_type == 'cart' %}
+  {% endif %}
+
+  {% comment %} If we are in the cart or have items, override with cart total if it makes sense {% endcomment %}
+  {% if cart.item_count > 0 %}
+    {% assign cart_applicable = false %}
+    {% assign cart_total_val = 0 %}
+    {% assign cart_donation_total = 0 %}
+    
     {% for item in cart.items %}
       {% if item.line_price >= min_val_cents %}
-        {% assign is_applicable = true %}
-        {% assign total_applicable_value_cents = total_applicable_value_cents | plus: item.line_price %}
+        {% assign cart_applicable = true %}
+        {% assign cart_total_val = cart_total_val | plus: item.line_price %}
         {% if settings.donationType == "percentage" %}
           {% assign pct = settings.donationValue | divided_by: 100.0 %}
           {% assign line_donation = item.line_price | times: pct %}
-          {% assign calculated_donation_cents = calculated_donation_cents | plus: line_donation %}
+          {% assign cart_donation_total = cart_donation_total | plus: line_donation %}
         {% else %}
           {% assign line_donation = settings.donationValue | times: 100 | times: item.quantity %}
-          {% assign calculated_donation_cents = calculated_donation_cents | plus: line_donation %}
+          {% assign cart_donation_total = cart_donation_total | plus: line_donation %}
         {% endif %}
       {% endif %}
     {% endfor %}
+
+    {% if cart_applicable %}
+      {% assign is_applicable = true %}
+      {% assign total_applicable_value_cents = cart_total_val %}
+      {% assign calculated_donation_cents = cart_donation_total %}
+    {% endif %}
   {% endif %}
 {% else %}
   {% assign order_total = cart.total_price | default: 0 %}
@@ -190,7 +203,6 @@
           }).catch(e => console.error("Donation heartbeat failed:", e));
         }
 
-        var cartTotalCents = {{ cart.total_price | default: 0 }};
         var currencyIso = {{ cart.currency.iso_code | json }} || "USD";
         var formatter = new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyIso });
 
@@ -198,107 +210,123 @@
             return formatter.format(cents / 100);
         }
 
-        function updateMessage(newPriceInCents) {
+        function updateMessage() {
           var containerEl = document.getElementById("pos-donation-{{ block.id }}");
           var minVal = baseSettings.minimumValue || 0;
           if (baseSettings.donationType === "percentage") {
               minVal = 0;
           }
-          var isApplicable = false;
-          var samplePriceCents = 0;
-          var donationAmtCents = 0;
 
-          var qty = 1;
-          var qtyInput = document.querySelector('input[name="quantity"]');
-          if (qtyInput) {
-            qty = parseInt(qtyInput.value) || 1;
-          }
+          // First try to calculate from cart, if items exist
+          fetch('/cart.js')
+            .then(res => res.json())
+            .then(cart => {
+              var isApplicable = false;
+              var totalValCents = 0;
+              var donationAmtCents = 0;
 
-          if (baseSettings.donationBasis === 'product') {
-             var unitPriceCents = newPriceInCents;
-             var lineTotalCents = unitPriceCents * qty;
-             if (lineTotalCents / 100.0 >= minVal) {
-                 isApplicable = true;
-                 samplePriceCents = lineTotalCents;
-                 if (baseSettings.donationType === "percentage") {
-                     donationAmtCents = (baseSettings.donationValue / 100) * samplePriceCents;
-                 } else {
-                     donationAmtCents = baseSettings.donationValue * 100 * qty;
-                 }
-             }
-          } else {
-             var orderTotalCents = cartTotalCents;
-             if (orderTotalCents / 100.0 >= minVal) {
-                 isApplicable = true;
-                 samplePriceCents = orderTotalCents;
-                 if (baseSettings.donationType === "percentage") {
-                     donationAmtCents = (baseSettings.donationValue / 100) * samplePriceCents;
-                 } else {
-                     donationAmtCents = baseSettings.donationValue * 100;
-                 }
-             }
-          }
+              if (baseSettings.donationBasis === 'product') {
+                if (cart.item_count > 0) {
+                  cart.items.forEach(item => {
+                    if (item.line_price / 100.0 >= minVal) {
+                      isApplicable = true;
+                      totalValCents += item.line_price;
+                      if (baseSettings.donationType === "percentage") {
+                        donationAmtCents += (baseSettings.donationValue / 100) * item.line_price;
+                      } else {
+                        donationAmtCents += baseSettings.donationValue * 100 * item.quantity;
+                      }
+                    }
+                  });
+                } else if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
+                  // On product page with empty cart, show potential donation
+                  var qty = 1;
+                  var qtyInput = document.querySelector('input[name="quantity"], .quantity__input');
+                  if (qtyInput) qty = parseInt(qtyInput.value) || 1;
+                  
+                  var priceCents = window.ShopifyAnalytics.meta.product.variants[0].price;
+                  // Try to get currently selected variant price if possible
+                  var urlParams = new URLSearchParams(window.location.search);
+                  var variantId = urlParams.get('variant');
+                  if (variantId) {
+                    var v = window.ShopifyAnalytics.meta.product.variants.find(v => v.id == variantId);
+                    if (v) priceCents = v.price;
+                  }
 
-          var globalEnabled = {{ app.metafields.common.enabled.value | json }};
-          if (globalEnabled === false || baseSettings.enabled === false) {
-             containerEl.style.display = 'none';
-             return;
-          }
-          
-          if (!isApplicable) {
-            containerEl.style.display = 'none';
-            return;
-          } else {
-            containerEl.style.display = 'block';
-          }
-          
-          var msg = baseSettings.donationMessage || "{donationAmount} of {totalOrderValue} will be donated to charity";
-          
-          function smartReplace(html, variable, value) {
-            var regex = new RegExp('\\{(\\s*<[^>]*>\\s*)*' + variable + '(\\s*<[^>]*>\\s*)*\\}', 'gi');
-            return html.replace(regex, value);
-          }
+                  if (priceCents * qty / 100.0 >= minVal) {
+                    isApplicable = true;
+                    totalValCents = priceCents * qty;
+                    if (baseSettings.donationType === "percentage") {
+                      donationAmtCents = (baseSettings.donationValue / 100) * totalValCents;
+                    } else {
+                      donationAmtCents = baseSettings.donationValue * 100 * qty;
+                    }
+                  }
+                }
+              } else {
+                // Order based
+                if (cart.total_price / 100.0 >= minVal) {
+                  isApplicable = true;
+                  totalValCents = cart.total_price;
+                  if (baseSettings.donationType === "percentage") {
+                    donationAmtCents = (baseSettings.donationValue / 100) * totalValCents;
+                  } else {
+                    donationAmtCents = baseSettings.donationValue * 100;
+                  }
+                }
+              }
 
-          msg = smartReplace(msg, "Percentage", baseSettings.donationValue + "%");
-          msg = smartReplace(msg, "FixedAmount", formatMoney(baseSettings.donationValue * 100));
-          msg = smartReplace(msg, "donationAmount", formatMoney(donationAmtCents));
-          msg = smartReplace(msg, "totalOrderValue", formatMoney(samplePriceCents));
-          
-          var html = '<p class="pos-donation-message">' + msg + '</p>';
-          
-          var tooltip = baseSettings.tooltipMessage;
-          if (tooltip) {
-              html += '<div class="pos-info-row"><span class="pos-info-icon">ⓘ</span><span class="pos-info-text">' + tooltip + '</span></div>';
-          }
-          contentEl.innerHTML = html;
+              var globalEnabled = {{ app.metafields.common.enabled.value | json }};
+              if (globalEnabled === false || baseSettings.enabled === false) {
+                 containerEl.style.display = 'none';
+                 return;
+              }
+              
+              if (!isApplicable) {
+                containerEl.style.display = 'none';
+                return;
+              } else {
+                containerEl.style.display = 'block';
+              }
+              
+              var msg = baseSettings.donationMessage || "{donationAmount} of {totalOrderValue} will be donated to charity";
+              
+              function smartReplace(html, variable, value) {
+                var regex = new RegExp('\\{(\\s*<[^>]*>\\s*)*' + variable + '(\\s*<[^>]*>\\s*)*\\}', 'gi');
+                return html.replace(regex, value);
+              }
+
+              msg = smartReplace(msg, "Percentage", baseSettings.donationValue + "%");
+              msg = smartReplace(msg, "FixedAmount", formatMoney(baseSettings.donationValue * 100));
+              msg = smartReplace(msg, "donationAmount", formatMoney(donationAmtCents));
+              msg = smartReplace(msg, "totalOrderValue", formatMoney(totalValCents));
+              
+              var html = '<p class="pos-donation-message">' + msg + '</p>';
+              
+              var tooltip = baseSettings.tooltipMessage;
+              if (tooltip) {
+                  html += '<div class="pos-info-row"><span class="pos-info-icon">ⓘ</span><span class="pos-info-text">' + tooltip + '</span></div>';
+              }
+              contentEl.innerHTML = html;
+            }).catch(e => console.error("Failed to update donation message:", e));
         }
 
         var originalPushState = history.pushState;
         var originalReplaceState = history.replaceState;
-        function handleUrlChange() {
-          setTimeout(function() {
-             var urlParams = new URLSearchParams(window.location.search);
-             var variantId = urlParams.get('variant');
-             if (variantId) {
-                fetch(window.location.pathname + '.js')
-                  .then(res => res.json())
-                  .then(productData => {
-                     var matchedVariant = productData.variants.find(v => v.id == variantId);
-                     if (matchedVariant) updateMessage(matchedVariant.price);
-                  }).catch(e => console.error(e));
-             }
-          }, 100);
-        }
-        window.addEventListener('popstate', handleUrlChange);
-        history.pushState = function() { originalPushState.apply(this, arguments); handleUrlChange(); };
-        history.replaceState = function() { originalReplaceState.apply(this, arguments); handleUrlChange(); };
+        
+        window.addEventListener('popstate', updateMessage);
+        history.pushState = function() { originalPushState.apply(this, arguments); updateMessage(); };
+        history.replaceState = function() { originalReplaceState.apply(this, arguments); updateMessage(); };
 
-        // Handle quantity changes
+        // Handle quantity changes and other inputs
         document.addEventListener('change', function(e) {
-          if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input')) {
-            handleUrlChange();
+          if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input') || e.target.name === 'id') {
+            setTimeout(updateMessage, 100);
           }
         });
+
+        // Initial update
+        updateMessage();
       });
     </script>
   {% endif %}

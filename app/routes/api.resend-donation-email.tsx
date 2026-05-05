@@ -236,7 +236,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     edges {
                       node {
                         title
-                        properties { name value }
+                        customAttributes { key value }
                         variant {
                             product {
                                 id
@@ -258,8 +258,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 // If not found and it's a roundup, look for the roundup line item
                 if (!donationItem && logType === 'roundup') {
                     donationItem = lineItems.find((li: any) => {
-                        return (li.properties || []).some((p: any) =>
-                            (p.name.toLowerCase() === "type" || p.name.toLowerCase() === "_type") &&
+                        return (li.customAttributes || []).some((p: any) =>
+                            (p.key.toLowerCase() === "type" || p.key.toLowerCase() === "_type") &&
                             (p.value.toLowerCase() === "roundup" || p.value.toLowerCase() === "extra")
                         );
                     });
