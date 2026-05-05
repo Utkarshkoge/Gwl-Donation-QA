@@ -324,9 +324,33 @@
             setTimeout(updateMessage, 100);
           }
         });
+        
+        document.addEventListener('input', function(e) {
+          if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input')) {
+            updateMessage();
+          }
+        });
+        
+        document.addEventListener('click', function(e) {
+          if (e.target.closest('[name="quantity"], .quantity__input, .quantity-button, .qty-btn, .quantity-selector')) {
+            setTimeout(updateMessage, 100);
+          }
+        });
+
+        // MutationObserver to watch for value changes on quantity inputs
+        try {
+          var qtyInput = document.querySelector('input[name="quantity"], .quantity__input');
+          if (qtyInput) {
+            var observer = new MutationObserver(function() { updateMessage(); });
+            observer.observe(qtyInput, { attributes: true, attributeFilter: ['value'] });
+          }
+        } catch(e) {}
 
         // Initial update
         updateMessage();
+        // Fallback for slower themes
+        setTimeout(updateMessage, 500);
+        setTimeout(updateMessage, 2000);
       });
     </script>
   {% endif %}

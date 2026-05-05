@@ -33,102 +33,101 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shop = session.shop;
     console.log("[ResendAPI] Authenticated for shop:", shop);
 
-    if (donationId) {
-        // Handle HEAD logic (legacy donation receipt)
-        const donation = await prisma.donation.findUnique({
-            where: { id: donationId },
-            include: {
-                campaign: true,
-            },
-        });
-
-        if (!donation) {
-            return data({ success: false, error: "Donation record not found" }, { status: 404 });
-        }
-
-        if (!donation.donorEmail) {
-            return data({ success: false, error: "Donation does not have an attached email" }, { status: 400 });
-        }
-
-        // Fetch custom EmailSettings
-        const emailSettings = await prisma.emailSettings.findUnique({
-            where: { shop: donation.campaign.shop },
-        });
-
-        const defaultTemplateString = emailSettings?.receiptBody || `
-      <h3>Donation Receipt</h3>
-      <table border="1" style="border-collapse: collapse; width: 100%; max-width: 400px; text-align: left; font-size: 14px;">
-        <tbody>
-          <tr><th style="padding: 8px; border: 1px solid #ddd;">First Name:</th><td style="padding: 8px; border: 1px solid #ddd;">{{first_name}}</td></tr>
-          <tr><th style="padding: 8px; border: 1px solid #ddd;">Last Name:</th><td style="padding: 8px; border: 1px solid #ddd;">{{last_name}}</td></tr>
-          <tr><th style="padding: 8px; border: 1px solid #ddd;">Email:</th><td style="padding: 8px; border: 1px solid #ddd;">{{email}}</td></tr>
-          <tr><th style="padding: 8px; border: 1px solid #ddd;">Date:</th><td style="padding: 8px; border: 1px solid #ddd;">{{date}}</td></tr>
-          <tr><th style="padding: 8px; border: 1px solid #ddd;">Order Number:</th><td style="padding: 8px; border: 1px solid #ddd;">{{order_number}}</td></tr>
-          <tr><th style="padding: 8px; border: 1px solid #ddd;">Donation Name:</th><td style="padding: 8px; border: 1px solid #ddd;">{{donation_name}}</td></tr>
-          <tr><th style="padding: 8px; border: 1px solid #ddd;">Donate Price:</th><td style="padding: 8px; border: 1px solid #ddd;">{{price}}</td></tr>
-          <tr><th style="padding: 8px; border: 1px solid #ddd;">Currency:</th><td style="padding: 8px; border: 1px solid #ddd;">{{currency}}</td></tr>
-        </tbody>
-      </table>
-      <h3 style="margin-top: 16px;">Thanks For Donating!</h3>
-    `;
-
-        const donorNameParts = (donation.donorName || "").split(" ");
-        const firstName = donorNameParts[0] || "Generous";
-        const lastName = donorNameParts.slice(1).join(" ") || "Donor";
-
-        const compiledTemplate = defaultTemplateString
-            .replace(/{{first_name}}/g, firstName)
-            .replace(/{{last_name}}/g, lastName)
-            .replace(/{{email}}/g, donation.donorEmail)
-            .replace(/{{date}}/g, donation.createdAt.toISOString().split("T")[0])
-            .replace(/{{order_number}}/g, donation.orderId || "N/A")
-            .replace(/{{donation_name}}/g, donation.campaign.name)
-            .replace(/{{price}}/g, donation.amount.toString())
-            .replace(/{{currency}}/g, "USD");
-
-        let transporter;
-        if (process.env.SMTP_HOST && process.env.SMTP_USER) {
-            transporter = nodemailer.createTransport({
-                host: process.env.SMTP_HOST,
-                port: Number(process.env.SMTP_PORT) || 587,
-                secure: process.env.SMTP_PORT === "465",
-                auth: {
-                    user: process.env.SMTP_USER,
-                    pass: process.env.SMTP_PASS,
+    try {
+        if (donationId) {
+            // Handle HEAD logic (legacy donation receipt)
+            const donation = await prisma.donation.findUnique({
+                where: { id: donationId },
+                include: {
+                    campaign: true,
                 },
             });
-        } else {
-            console.log("No SMTP details found in .env, falling back to dynamic Ethereal test account...");
-            const testAccount = await nodemailer.createTestAccount();
-            transporter = nodemailer.createTransport({
-                host: "smtp.ethereal.email",
-                port: 587,
-                secure: false,
-                auth: {
-                    user: testAccount.user,
-                    pass: testAccount.pass,
-                },
-            });
-        }
 
-        try {
-            const emailSubject = emailSettings?.receiptSubject || "Donation Receipt";
+            if (!donation) {
+                return data({ success: false, error: "Legacy donation record not found" }, { status: 404 });
+            }
 
-            const info = await transporter.sendMail({
-                from: process.env.SMTP_FROM_EMAIL || '"Donations App" <no-reply@donations.app>',
-                to: donation.donorEmail,
-                subject: emailSubject,
-                html: compiledTemplate,
+            if (!donation.donorEmail) {
+                return data({ success: false, error: "Donation does not have an attached email" }, { status: 400 });
+            }
+
+            const emailSettings = await prisma.emailSettings.findUnique({
+                where: { shop: donation.campaign.shop },
             });
 
-            console.log("Email sent successfully! Message ID: %s", info.messageId);
-            return data({ success: true, message: "Email sent successfully" });
-        } catch (emailError: any) {
-            console.error("Failed to send email via SMTP:", emailError);
-            return data({ success: false, error: emailError.message || "Email failed to send. Please try again." }, { status: 500 });
-        }
-    } else if (logId) {
-        try {
+            const defaultTemplateString = emailSettings?.receiptBody || `
+          <h3>Donation Receipt</h3>
+          <table border="1" style="border-collapse: collapse; width: 100%; max-width: 400px; text-align: left; font-size: 14px;">
+            <tbody>
+              <tr><th style="padding: 8px; border: 1px solid #ddd;">First Name:</th><td style="padding: 8px; border: 1px solid #ddd;">{{first_name}}</td></tr>
+              <tr><th style="padding: 8px; border: 1px solid #ddd;">Last Name:</th><td style="padding: 8px; border: 1px solid #ddd;">{{last_name}}</td></tr>
+              <tr><th style="padding: 8px; border: 1px solid #ddd;">Email:</th><td style="padding: 8px; border: 1px solid #ddd;">{{email}}</td></tr>
+              <tr><th style="padding: 8px; border: 1px solid #ddd;">Date:</th><td style="padding: 8px; border: 1px solid #ddd;">{{date}}</td></tr>
+              <tr><th style="padding: 8px; border: 1px solid #ddd;">Order Number:</th><td style="padding: 8px; border: 1px solid #ddd;">{{order_number}}</td></tr>
+              <tr><th style="padding: 8px; border: 1px solid #ddd;">Donation Name:</th><td style="padding: 8px; border: 1px solid #ddd;">{{donation_name}}</td></tr>
+              <tr><th style="padding: 8px; border: 1px solid #ddd;">Donate Price:</th><td style="padding: 8px; border: 1px solid #ddd;">{{price}}</td></tr>
+              <tr><th style="padding: 8px; border: 1px solid #ddd;">Currency:</th><td style="padding: 8px; border: 1px solid #ddd;">{{currency}}</td></tr>
+            </tbody>
+          </table>
+          <h3 style="margin-top: 16px;">Thanks For Donating!</h3>
+        `;
+
+            const donorNameParts = (donation.donorName || "").split(" ");
+            const firstName = donorNameParts[0] || "Generous";
+            const lastName = donorNameParts.slice(1).join(" ") || "Donor";
+
+            const compiledTemplate = defaultTemplateString
+                .replace(/{{first_name}}/g, firstName)
+                .replace(/{{last_name}}/g, lastName)
+                .replace(/{{email}}/g, donation.donorEmail)
+                .replace(/{{date}}/g, donation.createdAt.toISOString().split("T")[0])
+                .replace(/{{order_number}}/g, donation.orderId || "N/A")
+                .replace(/{{donation_name}}/g, donation.campaign.name)
+                .replace(/{{price}}/g, donation.amount.toString())
+                .replace(/{{currency}}/g, "USD");
+
+            let transporter;
+            if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+                transporter = nodemailer.createTransport({
+                    host: process.env.SMTP_HOST,
+                    port: Number(process.env.SMTP_PORT) || 587,
+                    secure: process.env.SMTP_PORT === "465",
+                    auth: {
+                        user: process.env.SMTP_USER,
+                        pass: process.env.SMTP_PASS,
+                    },
+                });
+            } else {
+                console.log("No SMTP details found in .env, falling back to dynamic Ethereal test account...");
+                const testAccount = await nodemailer.createTestAccount();
+                transporter = nodemailer.createTransport({
+                    host: "smtp.ethereal.email",
+                    port: 587,
+                    secure: false,
+                    auth: {
+                        user: testAccount.user,
+                        pass: testAccount.pass,
+                    },
+                });
+            }
+
+            try {
+                const emailSubject = emailSettings?.receiptSubject || "Donation Receipt";
+
+                const info = await transporter.sendMail({
+                    from: process.env.SMTP_FROM_EMAIL || '"Donations App" <no-reply@donations.app>',
+                    to: donation.donorEmail,
+                    subject: emailSubject,
+                    html: compiledTemplate,
+                });
+
+                console.log("Email sent successfully! Message ID: %s", info.messageId);
+                return data({ success: true, message: "Email sent successfully" });
+            } catch (emailError: any) {
+                console.error("Failed to send email via SMTP:", emailError);
+                return data({ success: false, error: "SMTP Error: " + emailError.message }, { status: 500 });
+            }
+        } else if (logId) {
             // Handle Staging logic (POS / Recurring / RoundUp / Preset donation receipt)
             let log = await prisma.posDonationLog.findUnique({ where: { id: logId } });
             let logType: 'pos' | 'recurring' | 'roundup' | 'preset' = 'pos';
@@ -154,7 +153,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
 
             if (!log && !presetDonation) {
-                return data({ success: false, error: "Log not found" }, { status: 404 });
+                console.warn("[ResendAPI] Log not found for ID:", logId);
+                return data({ success: false, error: "Log record not found" }, { status: 404 });
             }
 
             // Determine the order ID based on log type
@@ -163,8 +163,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 : (log as any).orderId;
 
             if (!orderIdForQuery) {
-                return data({ success: false, error: "Order ID not found for this donation" }, { status: 400 });
+                console.warn("[ResendAPI] Order ID missing in DB record. logType:", logType);
+                return data({ success: false, error: "No order associated with this donation record" }, { status: 400 });
             }
+
+            console.log("[ResendAPI] Attempting order fetch:", orderIdForQuery, "Type:", logType);
 
             if (!orderIdForQuery.startsWith("gid://")) {
                 orderIdForQuery = `gid://shopify/Order/${orderIdForQuery}`;
@@ -192,18 +195,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             const order = orderData.data?.order;
 
             if (!order || !order.email) {
-                if (logType === 'pos' && log) {
-                    await prisma.posDonationLog.update({
-                        where: { id: logId },
-                        data: { receiptStatus: "failed" }
-                    });
-                } else if (logType === 'roundup' && log) {
-                    await (prisma as any).roundUpDonationLog.update({
-                        where: { id: logId },
-                        data: { receiptStatus: "failed" }
-                    });
-                }
-                return data({ success: false, error: "Order or customer email not found" }, { status: 400 });
+                console.error("[ResendAPI] Order fetch failed or missing email:", JSON.stringify(orderData));
+                return data({ success: false, error: "Could not find Shopify order or recipient email" }, { status: 404 });
             }
 
             const customerName = order.billingAddress ? `${order.billingAddress.firstName || ""} ${order.billingAddress.lastName || ""}`.trim() : "";
@@ -223,12 +216,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             const config = await (prisma as any).recurringDonationConfig.findUnique({ where: { shop } });
             const donationProductId = config?.productId || "9946640679159";
 
-            // For preset donations, use the campaign name; for others, query order line items
             let productTitleForEmail = "Donation";
             if (presetDonation) {
                 productTitleForEmail = presetDonation.campaign?.name || "Preset Donation";
             } else {
-                const orderDetailResponse = await admin.graphql(
+                const detailResponse = await admin.graphql(
                     `#graphql
               query getOrderDetail($id: ID!) {
                 order(id: $id) {
@@ -249,9 +241,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               }`,
                     { variables: { id: orderIdForQuery } }
                 );
-                const detailData = await orderDetailResponse.json();
+                const detailData = await detailResponse.json();
                 const lineItems = detailData.data?.order?.lineItems?.edges?.map((e: any) => e.node) || [];
-
+                
                 // Try to find global donation product first
                 let donationItem = lineItems.find((li: any) => li.variant?.product?.id?.includes(donationProductId));
 
@@ -281,8 +273,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
 
             const donationAmount = presetDonation
-                ? presetDonation.amount.toFixed(2)
-                : (log as any).donationAmount.toFixed(2);
+                ? (presetDonation.amount || 0).toFixed(2)
+                : ((log as any).donationAmount || 0).toFixed(2);
+
+            console.log("[ResendAPI] Final Email Data:", { email: order.email, amount: donationAmount, type: logType });
 
             const res = await sendDonationReceipt({
                 email: order.email,
@@ -315,32 +309,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
                     });
                 }
-                // Preset donations don't have receiptStatus field — no update needed
                 return data({ success: true });
             } else {
-                if (logType === 'pos' && log) {
-                    await prisma.posDonationLog.update({
-                        where: { id: logId },
-                        data: { receiptStatus: "failed" }
-                    });
-                } else if (logType === 'recurring' && log) {
-                    await (prisma as any).recurringDonationLog.update({
-                        where: { id: logId },
-                        data: { receiptStatus: "failed" }
-                    });
-                } else if (logType === 'roundup' && log) {
-                    await (prisma as any).roundUpDonationLog.update({
-                        where: { id: logId },
-                        data: { receiptStatus: "failed" }
-                    });
-                }
-                return data({ success: false, error: res.error }, { status: 500 });
+                console.error("[ResendAPI] SendGrid Error:", res.error);
+                return data({ success: false, error: "Email Service Error: " + res.error }, { status: 500 });
             }
-        } catch (error: any) {
-            console.error("Resend action error:", error);
-            return data({ success: false, error: error.message || "An unexpected error occurred while resending the email" }, { status: 500 });
+        } else {
+            return data({ success: false, error: "No valid donation or log ID provided" }, { status: 400 });
         }
-    } else {
-        return data({ success: false, error: "Missing logId or donationId" }, { status: 400 });
+    } catch (globalError: any) {
+        console.error("[ResendAPI] Fatal Action Error:", globalError);
+        return data({ success: false, error: "Internal Server Error: " + globalError.message }, { status: 500 });
     }
 };
