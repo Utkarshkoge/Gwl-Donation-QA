@@ -147,9 +147,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
 
         // Determine the order ID based on log type
-        const orderIdForQuery = presetDonation
-            ? `gid://shopify/Order/${presetDonation.orderId}`
-            : log.orderId;
+        let orderIdForQuery = presetDonation
+            ? presetDonation.orderId
+            : (log as any).orderId;
+
+        if (orderIdForQuery && !orderIdForQuery.startsWith("gid://")) {
+            orderIdForQuery = `gid://shopify/Order/${orderIdForQuery}`;
+        }
 
         const orderResponse = await admin.graphql(
             `#graphql
@@ -221,6 +225,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 edges {
                   node {
                     title
+                    properties { name value }
                     variant {
                         product {
                             id
@@ -235,8 +240,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             );
             const detailData = await orderDetailResponse.json();
             const lineItems = detailData.data?.order?.lineItems?.edges?.map((e: any) => e.node) || [];
-            const donationItem = lineItems.find((li: any) => li.variant?.product?.id?.includes(donationProductId));
-            productTitleForEmail = donationItem?.title || "Donation";
+            
+            // Try to find global donation product first
+            let donationItem = lineItems.find((li: any) => li.variant?.product?.id?.includes(donationProductId));
+            
+            // If not found and it's a roundup, look for the roundup line item
+            if (!donationItem && logType === 'roundup') {
+                donationItem = lineItems.find((li: any) => {
+                    return (li.properties || []).some((p: any) => 
+                        (p.name.toLowerCase() === "type" || p.name.toLowerCase() === "_type") && 
+                        (p.value.toLowerCase() === "roundup" || p.value.toLowerCase() === "extra")
+                    );
+                });
+            }
+            
+            productTitleForEmail = donationItem?.title || (logType === 'roundup' ? "Round-Up Donation" : "Donation");
         }
 
         let nextBillingDate = "";

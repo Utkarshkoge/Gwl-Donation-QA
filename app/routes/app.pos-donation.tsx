@@ -224,15 +224,16 @@ export default function PosDonation() {
         settings.tooltipMessage !== savedState.tooltipMessage ||
         settings.orderTag !== savedState.orderTag;
 
-    const lastSaveRef = useRef<string | null>(null);
+    const lastHandledSubmissionRef = useRef<string | null>(null);
     useEffect(() => {
         if (fetcher.state === "idle" && fetcher.data?.status === "success") {
-            const key = JSON.stringify(settings);
-            if (key !== lastSaveRef.current) {
-                lastSaveRef.current = key;
+            if (lastHandledSubmissionRef.current !== "handled") {
+                lastHandledSubmissionRef.current = "handled";
                 shopify.toast.show("Settings saved successfully");
                 setSavedState({ ...settings });
             }
+        } else if (fetcher.state === "submitting") {
+            lastHandledSubmissionRef.current = "submitting";
         }
     }, [fetcher.state, fetcher.data, shopify, settings]);
 

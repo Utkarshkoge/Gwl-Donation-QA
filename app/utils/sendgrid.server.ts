@@ -117,6 +117,12 @@ export async function sendDonationReceipt({
 
     let htmlContent = "";
 
+    const isValidLogo = (url: string | null | undefined) => {
+        if (!url) return false;
+        const trimmed = url.trim();
+        return trimmed !== "" && trimmed !== "null" && (trimmed.startsWith("http") || trimmed.startsWith("data:image"));
+    };
+
     if (isRecurring && (type === "receipt" || type === "pause" || type === "resume" || type === "cancellation")) {
         const statusHeader = type === "pause" ? "Subscription Paused" :
             type === "resume" ? "Subscription Resumed" :
@@ -129,7 +135,7 @@ export async function sendDonationReceipt({
         htmlContent = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6; background-color: #fff; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
       <div style="margin-bottom: 24px;">
-        ${settings?.logoUrl && settings.logoUrl.trim() !== '' && settings.logoUrl !== 'null' ? `<img src="${settings.logoUrl}" alt="Logo" style="max-height: 50px; display: block;" />` : ""}
+        ${isValidLogo(settings?.logoUrl) ? `<img src="${settings!.logoUrl}" alt="Logo" style="max-height: 50px; display: block;" />` : ""}
       </div>
 
       <div style="text-align: left; margin-bottom: 24px;">
@@ -183,7 +189,7 @@ export async function sendDonationReceipt({
 
         htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6;">
-      ${settings?.logoUrl && settings.logoUrl.trim() !== '' && settings.logoUrl !== 'null' ? `<div style="margin-bottom: 24px;"><img src="${settings.logoUrl}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
+      ${isValidLogo(settings?.logoUrl) ? `<div style="margin-bottom: 24px;"><img src="${settings!.logoUrl}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
       <h2 style="color: #008060;">${title}</h2>
       ${recurringBadge}
       <div>${finalBody}</div>

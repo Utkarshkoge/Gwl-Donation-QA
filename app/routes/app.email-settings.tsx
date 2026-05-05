@@ -209,15 +209,20 @@ export default function EmailSettingsPage() {
     const isSaving =
         fetcher.state === "submitting" && fetcher.formMethod === "POST";
 
-    const lastSaveRef = useRef<string | null>(null);
+    const lastHandledSubmissionRef = useRef<string | null>(null);
     useEffect(() => {
         if (fetcher.state === "idle" && fetcher.data?.status === "success") {
-            const key = JSON.stringify(settings);
-            if (key !== lastSaveRef.current) {
-                lastSaveRef.current = key;
+            const submissionKey = fetcher.data.status + (new Date().getTime()); // Simple unique key for this success
+            
+            // We want to trigger this only once per successful submission
+            // Using a unique key from the data if possible, or just checking if we already handled this fetcher run
+            if (lastHandledSubmissionRef.current !== "handled") {
+                lastHandledSubmissionRef.current = "handled";
                 shopify.toast.show("Email settings saved successfully");
                 setInitialSettings({ ...settings });
             }
+        } else if (fetcher.state === "submitting") {
+            lastHandledSubmissionRef.current = "submitting";
         }
     }, [fetcher.state, fetcher.data, shopify, settings]);
 

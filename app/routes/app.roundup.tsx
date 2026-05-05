@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Tabs, BlockStack, InlineStack, Box, Text, Button, Card, Link } from "@shopify/polaris";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { useLoaderData, Form } from "react-router";
+import { useLoaderData, Form, useFetcher } from "react-router";
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { useLocation } from "react-router";
@@ -597,6 +598,9 @@ export async function action({ request }: ActionFunctionArgs) {
 export default function RoundUpDonationPage() {
 
     const { settings, currency } = useLoaderData<typeof loader>();
+    const fetcher = useFetcher();
+    const shopify = useAppBridge();
+
     const moneyFormatter = new Intl.NumberFormat(undefined, {
         style: 'currency',
         currency: currency || "USD",
@@ -663,6 +667,7 @@ export default function RoundUpDonationPage() {
             descriptionPreview !== (settings?.description || "Round up your order and donate {amount} to support our cause. Every small contribution makes a difference.") ||
             checkboxLabelPreview !== (settings?.checkboxLabel || "Yes, I want to donate {amount}") ||
             roundingMode !== (settings?.rounding || "nearest1") ||
+            customAmount !== (settings?.customAmount || "") ||
             additionalDonationTitlePreview !== (settings?.additionalDonationTitle || "Add an extra donation (optional)") ||
             placeholderTextPreview !== (settings?.placeholderText || "Enter amount") ||
             buttonTextPreview !== (settings?.buttonText || "Donate") ||
@@ -670,10 +675,24 @@ export default function RoundUpDonationPage() {
             donationOrderTag !== (settings?.donationOrderTag || "");
     }, [
         enabled, showImage, additionalDonationEnabled, campaignTitlePreview,
-        descriptionPreview, checkboxLabelPreview, roundingMode,
+        descriptionPreview, checkboxLabelPreview, roundingMode, customAmount,
         additionalDonationTitlePreview, placeholderTextPreview, buttonTextPreview,
         imageUrlPreview, donationOrderTag, settings
     ]);
+
+    const lastHandledSubmissionRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (fetcher.state === "idle" && fetcher.data?.success) {
+            if (lastHandledSubmissionRef.current !== "handled") {
+                lastHandledSubmissionRef.current = "handled";
+                shopify.toast.show("Round-up settings saved successfully");
+                // The loader will refresh settings, and since we use them in useMemo, 
+                // hasChanges will become false once the loader data matches current state.
+            }
+        } else if (fetcher.state === "submitting") {
+            lastHandledSubmissionRef.current = "submitting";
+        }
+    }, [fetcher.state, fetcher.data, shopify]);
 
     const choiceListRef = useRef<any>(null);
     const location = useLocation();
@@ -813,13 +832,27 @@ export default function RoundUpDonationPage() {
                     <s-button
                         slot="primary-action"
                         variant="primary"
-                        disabled={!hasChanges}
+                        disabled={!hasChanges || fetcher.state !== "idle"}
                         onClick={() => {
-                            const form = document.getElementById("roundup-form") as HTMLFormElement;
-                            if (form) form.requestSubmit();
+                            const formData = new FormData();
+                            formData.append("enabled", String(enabled));
+                            formData.append("campaignTitle", campaignTitlePreview);
+                            formData.append("description", descriptionPreview);
+                            formData.append("showImage", String(showImage));
+                            formData.append("checkboxLabel", checkboxLabelPreview);
+                            formData.append("rounding", roundingMode);
+                            formData.append("customAmount", customAmount);
+                            formData.append("additionalDonationEnabled", String(additionalDonationEnabled));
+                            formData.append("additionalDonationTitle", additionalDonationTitlePreview);
+                            formData.append("placeholderText", placeholderTextPreview);
+                            formData.append("buttonText", buttonTextPreview);
+                            formData.append("imageUrl", imageUrlPreview);
+                            formData.append("donationOrderTag", donationOrderTag);
+                            
+                            fetcher.submit(formData, { method: "POST" });
                         }}
                     >
-                        {hasChanges ? "Save Settings" : "No Changes"}
+                        {fetcher.state !== "idle" ? "Saving..." : (hasChanges ? "Save Settings" : "No Changes")}
                     </s-button>
                 )}
             </div>

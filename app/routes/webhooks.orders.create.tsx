@@ -42,7 +42,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const customerEmail = payload.email || payload.contact_email || payload.customer?.email || "No Email provided";
         const currency = payload.currency || "USD";
         const createdAt = payload.created_at ? new Date(payload.created_at) : new Date();
-        
+
         let hasCampaignDonation = false;
         let donationAmtCents = 0;
 
@@ -300,11 +300,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         for (const lineItem of (order.line_items || [])) {
                             const itemPriceCents = parseFloat(lineItem.price || 0) * 100;
                             const quantity = lineItem.quantity || 1;
-                            if (itemPriceCents >= minValCents) {
+                            const lineTotalCents = itemPriceCents * quantity;
+
+                            if (lineTotalCents >= minValCents) {
                                 isApplicable = true;
                                 isPosDonationSource = true;
-                                const lineTotalCents = itemPriceCents * quantity;
-                                samplePriceCents += lineTotalCents;
                                 donationAmtCents += effectiveSettings.donationType === "percentage"
                                     ? (effectiveSettings.donationValue / 100) * lineTotalCents
                                     : effectiveSettings.donationValue * 100 * quantity;
@@ -314,7 +314,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         isApplicable = true;
                         isPosDonationSource = true;
                         samplePriceCents = totalCents;
-                        donationAmtCents = effectiveSettings.donationType === "percentage" ? (effectiveSettings.donationValue / 100) * samplePriceCents : effectiveSettings.donationValue * 100;
+                        const calculatedDonation = effectiveSettings.donationType === "percentage" ? (effectiveSettings.donationValue / 100) * samplePriceCents : effectiveSettings.donationValue * 100;
+                        donationAmtCents += calculatedDonation;
                     }
                 } else {
                     console.log(`[Webhook] Skipping POS check - Widget not active and source is not POS. Source: ${order.source_name}`);
@@ -468,11 +469,59 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         },
                     });
                 } else if (hasDirectDonationProduct && frequency === "one_time") {
-                    // ── One-time = Preset: No separate handling needed ──
-                    // One-time donations through the global product are treated as preset.
-                    // Tracked via order tags and note attributes only.
-                    hasCampaignDonation = true;
-                    console.log(`[Webhook] One-time global donation treated as Preset (no General Donation campaign).`);
+                    // ── One-time = Preset: Insert into Donation table ──
+                    try {
+                        let campaign = await db.campaign.findFirst({
+                            where: {
+                                shop: shop,
+                                OR: [
+                                    { name: { contains: "General", mode: "insensitive" } },
+                                    { name: { contains: "One-time", mode: "insensitive" } },
+                                    { name: { contains: "Donation", mode: "insensitive" } }
+                                ]
+                            }
+                        });
+
+                        if (!campaign) {
+                            campaign = await db.campaign.findFirst({ where: { shop } });
+                        }
+
+                        if (campaign) {
+                            const donationItem = (order.line_items || []).find((li: any) => String(li.product_id) === String(DONATION_PRODUCT_ID));
+                            const variantIdStr = donationItem?.variant_id?.toString() || "unknown";
+
+                            await db.donation.upsert({
+                                where: {
+                                    orderId_shopifyVariantId: {
+                                        orderId: orderId,
+                                        shopifyVariantId: variantIdStr,
+                                    },
+                                },
+                                create: {
+                                    campaignId: campaign.id,
+                                    orderId: orderId,
+                                    orderNumber: order.name,
+                                    amount: parseFloat(donationAmtFormatted),
+                                    currency: currency,
+                                    donorName: currentCustomerName,
+                                    donorEmail: currentCustomerEmail,
+                                    shopifyProductId: String(DONATION_PRODUCT_ID),
+                                    shopifyVariantId: variantIdStr,
+                                    createdAt: createdAt,
+                                },
+                                update: {
+                                    amount: parseFloat(donationAmtFormatted),
+                                    orderNumber: order.name,
+                                },
+                            });
+                            hasCampaignDonation = true;
+                            console.log(`[Webhook] Recorded One-time global donation as Preset under campaign: ${campaign.name}`);
+                        } else {
+                            console.warn(`[Webhook] No campaign found to link one-time donation for shop ${shop}`);
+                        }
+                    } catch (dbErr) {
+                        console.error("[Webhook] Error recording one-time donation:", dbErr);
+                    }
                 } else if (hasRoundUpDonation) {
                     // ── Fix: Roundup donations go to their own dedicated table ──
                     await db.roundUpDonationLog.upsert({
@@ -557,7 +606,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
                     if (hasCampaignDonation) {
                         if (!existingTags.includes("preset_donation")) existingTags.push("preset_donation");
-                        
+
                         const customerId = (order as any).customer_gql_id || (order.customer?.id ? `gid://shopify/Customer/${order.customer.id}` : null);
                         if (customerId) {
                             await admin.graphql(`#graphql
@@ -570,11 +619,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     const currentAttrs = (order.note_attributes || [])
                         .filter((a: any) => a.name !== "POS Donation Amount")
                         .map((a: any) => ({ key: a.name, value: a.value }));
-                    
+
                     let donationLabel = "Donation Amount";
                     let donationTypeLabel = "Donation Type";
                     let typeValue = "POS";
-                    
+
                     if (hasCampaignDonation || (hasDirectDonationProduct && frequency === "one_time")) {
                         typeValue = "Preset";
                     } else if (hasDirectDonationProduct) {
@@ -585,7 +634,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
                     // Remove existing if any to ensure fresh values
                     const finalAttrs = currentAttrs.filter(a => a.key !== donationLabel && a.key !== donationTypeLabel);
-                    
+
                     finalAttrs.push({ key: donationLabel, value: `${order.currency || "$"}${donationAmtFormatted}` });
                     finalAttrs.push({ key: donationTypeLabel, value: typeValue });
 
