@@ -103,9 +103,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         } else {
                             console.log(`[Webhook] Refund email skipped for ${shop} - Plan restriction: ${plan}`);
                         }
-                        } else {
-                            console.log(`[Webhook] Refund email skipped for ${shop} - Plan restriction: ${plan}`);
-                        }
                     } catch (emailErr) {
                         console.error("Failed to send refund email:", emailErr);
                     }
