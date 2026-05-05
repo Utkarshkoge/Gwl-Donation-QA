@@ -86,14 +86,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         </div>
 
         ${successMsg ? `
-          <div style="background:#d1fae5;color:#065f46;padding:12px;border-radius:8px;margin-bottom:20px;">
-            ✓ ${successMsg}
+          <div id="subscription-success-msg" style="position:relative;background:#d1fae5;color:#065f46;padding:12px 40px 12px 12px;border-radius:8px;margin-bottom:20px;transition:opacity 0.5s ease;display:flex;align-items:center;">
+            <span style="flex:1;">✓ ${successMsg}</span>
+            <button type="button" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:#065f46;font-size:20px;cursor:pointer;padding:4px;line-height:1;">&times;</button>
           </div>
         ` : ''}
         
         ${errorMsg ? `
-          <div style="background:#fee2e2;color:#991b1b;padding:12px;border-radius:8px;margin-bottom:20px;">
-            ✗ ${errorMsg}
+          <div id="subscription-error-msg" style="position:relative;background:#fee2e2;color:#991b1b;padding:12px 40px 12px 12px;border-radius:8px;margin-bottom:20px;transition:opacity 0.5s ease;display:flex;align-items:center;">
+            <span style="flex:1;">✗ ${errorMsg}</span>
+            <button type="button" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:#991b1b;font-size:20px;cursor:pointer;padding:4px;line-height:1;">&times;</button>
           </div>
         ` : ''}
 
@@ -160,7 +162,45 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       </div>
     `;
 
-    return liquid(html);
+    const finalHtml = `
+      ${html}
+      <script>
+        (function() {
+          function setupMsg(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(function() {
+              el.style.opacity = '0';
+              setTimeout(function() { el.style.display = 'none'; }, 500);
+            }, 5000);
+            
+            // Close button handler
+            var btn = el.querySelector('button');
+            if (btn) {
+              btn.onclick = function() { el.style.display = 'none'; };
+            }
+          }
+          
+          setupMsg('subscription-success-msg');
+          setupMsg('subscription-error-msg');
+          
+          // Clean URL parameters
+          if (window.history.replaceState) {
+            var url = new URL(window.location.href);
+            var changed = false;
+            if (url.searchParams.has('success')) { url.searchParams.delete('success'); changed = true; }
+            if (url.searchParams.has('error')) { url.searchParams.delete('error'); changed = true; }
+            if (changed) {
+              window.history.replaceState({}, '', url.toString());
+            }
+          }
+        })();
+      </script>
+    `;
+
+    return liquid(finalHtml);
   } catch (err) {
     console.error("Error:", err);
     return liquid(`

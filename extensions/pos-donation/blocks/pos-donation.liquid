@@ -1,27 +1,44 @@
 {% assign settings = app.metafields.pos_donation.settings.value %}
 {% assign is_enabled = settings.enabled | default: false %}
 
-{% assign default_minimum = 0 %}
-{% assign min_val = settings.minimumValue | default: default_minimum %}
+{% assign min_val = settings.minimumValue | default: 0 %}
 {% if settings.donationType == "percentage" %}
   {% assign min_val = 0 %}
 {% endif %}
+{% assign min_val_cents = min_val | times: 100 %}
 
+{% assign calculated_donation_cents = 0 %}
 {% assign total_applicable_value_cents = 0 %}
 {% assign is_applicable = false %}
 
 {% if settings.donationBasis == 'product' %}
-  {% assign item_price = 0 %}
   {% if request.page_type == 'product' %}
     {% assign item_price = product.selected_or_first_available_variant.price | default: 0 %}
+    {% if item_price >= min_val_cents %}
+      {% assign is_applicable = true %}
+      {% assign total_applicable_value_cents = item_price %}
+      {% if settings.donationType == "percentage" %}
+        {% assign pct = settings.donationValue | divided_by: 100.0 %}
+        {% assign calculated_donation_cents = item_price | times: pct %}
+      {% else %}
+        {% assign calculated_donation_cents = settings.donationValue | times: 100 %}
+      {% endif %}
+    {% endif %}
   {% elsif request.page_type == 'cart' %}
-    {% assign item_price = cart.total_price | default: 0 %}
-  {% endif %}
-  
-  {% assign item_price_val = item_price | divided_by: 100.0 %}
-  {% if item_price_val >= min_val %}
-    {% assign is_applicable = true %}
-    {% assign total_applicable_value_cents = item_price %}
+    {% for item in cart.items %}
+      {% if item.line_price >= min_val_cents %}
+        {% assign is_applicable = true %}
+        {% assign total_applicable_value_cents = total_applicable_value_cents | plus: item.line_price %}
+        {% if settings.donationType == "percentage" %}
+          {% assign pct = settings.donationValue | divided_by: 100.0 %}
+          {% assign line_donation = item.line_price | times: pct %}
+          {% assign calculated_donation_cents = calculated_donation_cents | plus: line_donation %}
+        {% else %}
+          {% assign line_donation = settings.donationValue | times: 100 | times: item.quantity %}
+          {% assign calculated_donation_cents = calculated_donation_cents | plus: line_donation %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
   {% endif %}
 {% else %}
   {% assign order_total = cart.total_price | default: 0 %}
@@ -29,17 +46,12 @@
   {% if order_val >= min_val %}
     {% assign is_applicable = true %}
     {% assign total_applicable_value_cents = order_total %}
-  {% endif %}
-{% endif %}
-
-{% assign calculated_donation_cents = 0 %}
-{% if is_applicable %}
-  {% if settings.donationType == "percentage" %}
-    {% assign pct = settings.donationValue | divided_by: 100.0 %}
-    {% assign val_in_bucks = total_applicable_value_cents | divided_by: 100.0 %}
-    {% assign calculated_donation_cents = val_in_bucks | times: pct | times: 100 %}
-  {% else %}
-    {% assign calculated_donation_cents = settings.donationValue | times: 100 %}
+    {% if settings.donationType == "percentage" %}
+      {% assign pct = settings.donationValue | divided_by: 100.0 %}
+      {% assign calculated_donation_cents = order_total | times: pct %}
+    {% else %}
+      {% assign calculated_donation_cents = settings.donationValue | times: 100 %}
+    {% endif %}
   {% endif %}
 {% endif %}
 
@@ -196,15 +208,22 @@
           var samplePriceCents = 0;
           var donationAmtCents = 0;
 
+          var qty = 1;
+          var qtyInput = document.querySelector('input[name="quantity"]');
+          if (qtyInput) {
+            qty = parseInt(qtyInput.value) || 1;
+          }
+
           if (baseSettings.donationBasis === 'product') {
-             var itemValCents = newPriceInCents;
-             if (itemValCents / 100.0 >= minVal) {
+             var unitPriceCents = newPriceInCents;
+             var lineTotalCents = unitPriceCents * qty;
+             if (lineTotalCents / 100.0 >= minVal) {
                  isApplicable = true;
-                 samplePriceCents = itemValCents;
+                 samplePriceCents = lineTotalCents;
                  if (baseSettings.donationType === "percentage") {
                      donationAmtCents = (baseSettings.donationValue / 100) * samplePriceCents;
                  } else {
-                     donationAmtCents = baseSettings.donationValue * 100;
+                     donationAmtCents = baseSettings.donationValue * 100 * qty;
                  }
              }
           } else {
@@ -273,6 +292,13 @@
         window.addEventListener('popstate', handleUrlChange);
         history.pushState = function() { originalPushState.apply(this, arguments); handleUrlChange(); };
         history.replaceState = function() { originalReplaceState.apply(this, arguments); handleUrlChange(); };
+
+        // Handle quantity changes
+        document.addEventListener('change', function(e) {
+          if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input')) {
+            handleUrlChange();
+          }
+        });
       });
     </script>
   {% endif %}

@@ -6,22 +6,32 @@ import nodemailer from "nodemailer";
 import { sendDonationReceipt } from "../utils/sendgrid.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-    const url = new URL(request.url);
-    if (url.protocol === "http:" && !url.hostname.includes("localhost")) {
-        url.protocol = "https:";
-    }
-    const secureRequest = new Request(url.toString(), request);
-
-    const { admin, session } = await authenticate.admin(secureRequest);
-    const shop = session.shop;
-
-    if (request.method !== "POST") {
-        return data({ success: false, error: "Method not allowed" }, { status: 405 });
-    }
-
+    console.log("[ResendAPI] Action started");
     const formData = await request.formData();
     const donationId = formData.get("donationId") as string;
     const logId = formData.get("logId") as string;
+    console.log("[ResendAPI] Received params:", { donationId, logId });
+
+    let admin, session;
+    try {
+        const auth = await authenticate.admin(request);
+        admin = auth.admin;
+        session = auth.session;
+    } catch (authError) {
+        console.warn("[ResendAPI] Standard auth failed, trying HTTPS wrapper...", authError);
+        const url = new URL(request.url);
+        url.protocol = "https:";
+        const secureRequest = new Request(url.toString(), {
+            headers: request.headers,
+            method: request.method,
+        });
+        const auth = await authenticate.admin(secureRequest);
+        admin = auth.admin;
+        session = auth.session;
+    }
+
+    const shop = session.shop;
+    console.log("[ResendAPI] Authenticated for shop:", shop);
 
     if (donationId) {
         // Handle HEAD logic (legacy donation receipt)
@@ -118,213 +128,219 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return data({ success: false, error: emailError.message || "Email failed to send. Please try again." }, { status: 500 });
         }
     } else if (logId) {
-        // Handle Staging logic (POS / Recurring / RoundUp / Preset donation receipt)
-        let log = await prisma.posDonationLog.findUnique({ where: { id: logId } });
-        let logType: 'pos' | 'recurring' | 'roundup' | 'preset' = 'pos';
+        try {
+            // Handle Staging logic (POS / Recurring / RoundUp / Preset donation receipt)
+            let log = await prisma.posDonationLog.findUnique({ where: { id: logId } });
+            let logType: 'pos' | 'recurring' | 'roundup' | 'preset' = 'pos';
 
-        if (!log) {
-            log = await (prisma as any).recurringDonationLog.findUnique({ where: { id: logId } });
-            if (log) logType = 'recurring';
-        }
-
-        if (!log) {
-            log = await (prisma as any).roundUpDonationLog.findUnique({ where: { id: logId } });
-            if (log) logType = 'roundup';
-        }
-
-        // Check preset Donation table (different schema)
-        let presetDonation: any = null;
-        if (!log) {
-            presetDonation = await prisma.donation.findUnique({
-                where: { id: logId },
-                include: { campaign: true },
-            });
-            if (presetDonation) logType = 'preset';
-        }
-
-        if (!log && !presetDonation) {
-            return data({ success: false, error: "Log not found" }, { status: 404 });
-        }
-
-        // Determine the order ID based on log type
-        let orderIdForQuery = presetDonation
-            ? presetDonation.orderId
-            : (log as any).orderId;
-
-        if (orderIdForQuery && !orderIdForQuery.startsWith("gid://")) {
-            orderIdForQuery = `gid://shopify/Order/${orderIdForQuery}`;
-        }
-
-        const orderResponse = await admin.graphql(
-            `#graphql
-      query getOrder($id: ID!) {
-        order(id: $id) {
-          name
-          email
-          shippingAddress {
-            name address1 address2 city provinceCode zip country
-          }
-          billingAddress {
-            name address1 address2 city provinceCode zip country
-            firstName
-            lastName
-          }
-        }
-      }`,
-            { variables: { id: orderIdForQuery } }
-        );
-        const orderData = await orderResponse.json();
-        const order = orderData.data?.order;
-
-        if (!order || !order.email) {
-            if (logType === 'pos') {
-                await prisma.posDonationLog.update({
-                    where: { id: logId },
-                    data: { receiptStatus: "failed" }
-                });
-            } else if (logType === 'roundup') {
-                await (prisma as any).roundUpDonationLog.update({
-                    where: { id: logId },
-                    data: { receiptStatus: "failed" }
-                });
+            if (!log) {
+                log = await (prisma as any).recurringDonationLog.findUnique({ where: { id: logId } });
+                if (log) logType = 'recurring';
             }
-            return data({ success: false, error: "Order or customer email not found" }, { status: 400 });
-        }
 
-        const customerName = order.billingAddress ? `${order.billingAddress.firstName || ""} ${order.billingAddress.lastName || ""}`.trim() : "";
+            if (!log) {
+                log = await (prisma as any).roundUpDonationLog.findUnique({ where: { id: logId } });
+                if (log) logType = 'roundup';
+            }
 
-        const shippingAddr = order.shippingAddress
-            ? `${order.shippingAddress.name}\n${order.shippingAddress.address1}${order.shippingAddress.address2 ? ` ${order.shippingAddress.address2}` : ""}\n${order.shippingAddress.city}, ${order.shippingAddress.provinceCode || ""} ${order.shippingAddress.zip}\n${order.shippingAddress.country}`
-            : "";
-        const billingAddr = order.billingAddress
-            ? `${order.billingAddress.name}\n${order.billingAddress.address1}${order.billingAddress.address2 ? ` ${order.billingAddress.address2}` : ""}\n${order.billingAddress.city}, ${order.billingAddress.provinceCode || ""} ${order.billingAddress.zip}\n${order.billingAddress.country}`
-            : "";
+            // Check preset Donation table (different schema)
+            let presetDonation: any = null;
+            if (!log) {
+                presetDonation = await prisma.donation.findUnique({
+                    where: { id: logId },
+                    include: { campaign: true },
+                });
+                if (presetDonation) logType = 'preset';
+            }
 
-        let freqLabel = "One-time";
-        if (logType === 'recurring') {
-            freqLabel = (log as any).frequency === "weekly" ? "Weekly" : (log as any).frequency === "monthly" ? "Monthly" : "One-time";
-        } else if (logType === 'roundup') {
-            freqLabel = "One-time";
-        } else if (logType === 'preset') {
-            freqLabel = "One-time";
-        }
+            if (!log && !presetDonation) {
+                return data({ success: false, error: "Log not found" }, { status: 404 });
+            }
 
-        const config = await (prisma as any).recurringDonationConfig.findUnique({ where: { shop } });
-        const donationProductId = config?.productId || "9946640679159";
+            // Determine the order ID based on log type
+            let orderIdForQuery = presetDonation
+                ? presetDonation.orderId
+                : (log as any).orderId;
 
-        // For preset donations, use the campaign name; for others, query order line items
-        let productTitleForEmail = "Donation";
-        if (presetDonation) {
-            productTitleForEmail = presetDonation.campaign?.name || "Preset Donation";
-        } else {
-            const orderDetailResponse = await admin.graphql(
+            if (!orderIdForQuery) {
+                return data({ success: false, error: "Order ID not found for this donation" }, { status: 400 });
+            }
+
+            if (!orderIdForQuery.startsWith("gid://")) {
+                orderIdForQuery = `gid://shopify/Order/${orderIdForQuery}`;
+            }
+
+            const orderResponse = await admin.graphql(
                 `#graphql
-          query getOrderDetail($id: ID!) {
+          query getOrder($id: ID!) {
             order(id: $id) {
-              lineItems(first: 20) {
-                edges {
-                  node {
-                    title
-                    properties { name value }
-                    variant {
-                        product {
-                            id
-                        }
-                    }
-                  }
-                }
+              name
+              email
+              shippingAddress {
+                name address1 address2 city provinceCode zip country
+              }
+              billingAddress {
+                name address1 address2 city provinceCode zip country
+                firstName
+                lastName
               }
             }
           }`,
                 { variables: { id: orderIdForQuery } }
             );
-            const detailData = await orderDetailResponse.json();
-            const lineItems = detailData.data?.order?.lineItems?.edges?.map((e: any) => e.node) || [];
-            
-            // Try to find global donation product first
-            let donationItem = lineItems.find((li: any) => li.variant?.product?.id?.includes(donationProductId));
-            
-            // If not found and it's a roundup, look for the roundup line item
-            if (!donationItem && logType === 'roundup') {
-                donationItem = lineItems.find((li: any) => {
-                    return (li.properties || []).some((p: any) => 
-                        (p.name.toLowerCase() === "type" || p.name.toLowerCase() === "_type") && 
-                        (p.value.toLowerCase() === "roundup" || p.value.toLowerCase() === "extra")
-                    );
-                });
+            const orderData = await orderResponse.json();
+            const order = orderData.data?.order;
+
+            if (!order || !order.email) {
+                if (logType === 'pos' && log) {
+                    await prisma.posDonationLog.update({
+                        where: { id: logId },
+                        data: { receiptStatus: "failed" }
+                    });
+                } else if (logType === 'roundup' && log) {
+                    await (prisma as any).roundUpDonationLog.update({
+                        where: { id: logId },
+                        data: { receiptStatus: "failed" }
+                    });
+                }
+                return data({ success: false, error: "Order or customer email not found" }, { status: 400 });
             }
-            
-            productTitleForEmail = donationItem?.title || (logType === 'roundup' ? "Round-Up Donation" : "Donation");
-        }
 
-        let nextBillingDate = "";
-        const createdDate = new Date(log.createdAt);
-        const frequencyFromLog = (log as any).frequency;
+            const customerName = order.billingAddress ? `${order.billingAddress.firstName || ""} ${order.billingAddress.lastName || ""}`.trim() : "";
 
-        if (frequencyFromLog === "weekly") {
-            createdDate.setDate(createdDate.getDate() + 7);
-            nextBillingDate = createdDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        } else if (frequencyFromLog === "monthly") {
-            createdDate.setDate(createdDate.getDate() + 30);
-            nextBillingDate = createdDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        }
+            const shippingAddr = order.shippingAddress
+                ? `${order.shippingAddress.name}\n${order.shippingAddress.address1}${order.shippingAddress.address2 ? ` ${order.shippingAddress.address2}` : ""}\n${order.shippingAddress.city}, ${order.shippingAddress.provinceCode || ""} ${order.shippingAddress.zip}\n${order.shippingAddress.country}`
+                : "";
+            const billingAddr = order.billingAddress
+                ? `${order.billingAddress.name}\n${order.billingAddress.address1}${order.billingAddress.address2 ? ` ${order.billingAddress.address2}` : ""}\n${order.billingAddress.city}, ${order.billingAddress.provinceCode || ""} ${order.billingAddress.zip}\n${order.billingAddress.country}`
+                : "";
 
-        const donationAmount = presetDonation
-            ? presetDonation.amount.toFixed(2)
-            : log.donationAmount.toFixed(2);
-
-        const res = await sendDonationReceipt({
-            email: order.email,
-            name: customerName,
-            amount: donationAmount,
-            orderNumber: order.name,
-            shop,
-            frequency: freqLabel,
-            shippingAddress: shippingAddr,
-            billingAddress: billingAddr,
-            productTitle: productTitleForEmail,
-            manageUrl: `https://${shop}/account/subscriptions`,
-            nextBillingDate: nextBillingDate
-        });
-
-        if (res.success) {
-            if (logType === 'pos') {
-                await prisma.posDonationLog.update({
-                    where: { id: logId },
-                    data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
-                });
-            } else if (logType === 'recurring') {
-                await (prisma as any).recurringDonationLog.update({
-                    where: { id: logId },
-                    data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
-                });
-            } else if (logType === 'roundup') {
-                await (prisma as any).roundUpDonationLog.update({
-                    where: { id: logId },
-                    data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
-                });
+            let freqLabel = "One-time";
+            if (logType === 'recurring' && log) {
+                freqLabel = (log as any).frequency === "weekly" ? "Weekly" : (log as any).frequency === "monthly" ? "Monthly" : "One-time";
             }
-            // Preset donations don't have receiptStatus field — no update needed
-            return data({ success: true });
-        } else {
-            if (logType === 'pos') {
-                await prisma.posDonationLog.update({
-                    where: { id: logId },
-                    data: { receiptStatus: "failed" }
-                });
-            } else if (logType === 'recurring') {
-                await (prisma as any).recurringDonationLog.update({
-                    where: { id: logId },
-                    data: { receiptStatus: "failed" }
-                });
-            } else if (logType === 'roundup') {
-                await (prisma as any).roundUpDonationLog.update({
-                    where: { id: logId },
-                    data: { receiptStatus: "failed" }
-                });
+
+            const config = await (prisma as any).recurringDonationConfig.findUnique({ where: { shop } });
+            const donationProductId = config?.productId || "9946640679159";
+
+            // For preset donations, use the campaign name; for others, query order line items
+            let productTitleForEmail = "Donation";
+            if (presetDonation) {
+                productTitleForEmail = presetDonation.campaign?.name || "Preset Donation";
+            } else {
+                const orderDetailResponse = await admin.graphql(
+                    `#graphql
+              query getOrderDetail($id: ID!) {
+                order(id: $id) {
+                  lineItems(first: 20) {
+                    edges {
+                      node {
+                        title
+                        properties { name value }
+                        variant {
+                            product {
+                                id
+                            }
+                        }
+                      }
+                    }
+                  }
+                }
+              }`,
+                    { variables: { id: orderIdForQuery } }
+                );
+                const detailData = await orderDetailResponse.json();
+                const lineItems = detailData.data?.order?.lineItems?.edges?.map((e: any) => e.node) || [];
+
+                // Try to find global donation product first
+                let donationItem = lineItems.find((li: any) => li.variant?.product?.id?.includes(donationProductId));
+
+                // If not found and it's a roundup, look for the roundup line item
+                if (!donationItem && logType === 'roundup') {
+                    donationItem = lineItems.find((li: any) => {
+                        return (li.properties || []).some((p: any) =>
+                            (p.name.toLowerCase() === "type" || p.name.toLowerCase() === "_type") &&
+                            (p.value.toLowerCase() === "roundup" || p.value.toLowerCase() === "extra")
+                        );
+                    });
+                }
+
+                productTitleForEmail = donationItem?.title || (logType === 'roundup' ? "Round-Up Donation" : "Donation");
             }
-            return data({ success: false, error: res.error }, { status: 500 });
+
+            let nextBillingDate = "";
+            const createdDate = new Date(presetDonation ? presetDonation.createdAt : (log as any).createdAt);
+            const frequencyFromLog = presetDonation ? "one_time" : (log as any).frequency;
+
+            if (frequencyFromLog === "weekly") {
+                createdDate.setDate(createdDate.getDate() + 7);
+                nextBillingDate = createdDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            } else if (frequencyFromLog === "monthly") {
+                createdDate.setDate(createdDate.getDate() + 30);
+                nextBillingDate = createdDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            }
+
+            const donationAmount = presetDonation
+                ? presetDonation.amount.toFixed(2)
+                : (log as any).donationAmount.toFixed(2);
+
+            const res = await sendDonationReceipt({
+                email: order.email,
+                name: customerName,
+                amount: donationAmount,
+                orderNumber: order.name,
+                shop,
+                frequency: freqLabel,
+                shippingAddress: shippingAddr,
+                billingAddress: billingAddr,
+                productTitle: productTitleForEmail,
+                manageUrl: `https://${shop}/account/subscriptions`,
+                nextBillingDate: nextBillingDate
+            });
+
+            if (res.success) {
+                if (logType === 'pos' && log) {
+                    await prisma.posDonationLog.update({
+                        where: { id: logId },
+                        data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
+                    });
+                } else if (logType === 'recurring' && log) {
+                    await (prisma as any).recurringDonationLog.update({
+                        where: { id: logId },
+                        data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
+                    });
+                } else if (logType === 'roundup' && log) {
+                    await (prisma as any).roundUpDonationLog.update({
+                        where: { id: logId },
+                        data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
+                    });
+                }
+                // Preset donations don't have receiptStatus field — no update needed
+                return data({ success: true });
+            } else {
+                if (logType === 'pos' && log) {
+                    await prisma.posDonationLog.update({
+                        where: { id: logId },
+                        data: { receiptStatus: "failed" }
+                    });
+                } else if (logType === 'recurring' && log) {
+                    await (prisma as any).recurringDonationLog.update({
+                        where: { id: logId },
+                        data: { receiptStatus: "failed" }
+                    });
+                } else if (logType === 'roundup' && log) {
+                    await (prisma as any).roundUpDonationLog.update({
+                        where: { id: logId },
+                        data: { receiptStatus: "failed" }
+                    });
+                }
+                return data({ success: false, error: res.error }, { status: 500 });
+            }
+        } catch (error: any) {
+            console.error("Resend action error:", error);
+            return data({ success: false, error: error.message || "An unexpected error occurred while resending the email" }, { status: 500 });
         }
+    } else {
     } else {
         return data({ success: false, error: "Missing logId or donationId" }, { status: 400 });
     }

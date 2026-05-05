@@ -36,12 +36,9 @@ export async function sendDonationReceipt({
     productTitle,
     paymentMethod,
 }: DonationReceiptArgs) {
-    // Defensive environment variable parsing to handle potential merging issues in .env
-    const rawApiKey = process.env.SENDGRID_API_KEY || "";
-    const apiKey = rawApiKey.split("SHOPIFY")[0].trim();
-
-    const rawFromEmail = process.env.SENDGRID_FROM_EMAIL || "";
-    let verifiedFromEmail = rawFromEmail.split("SHOPIFY")[0].trim();
+    // Defensive environment variable parsing
+    const apiKey = (process.env.SENDGRID_API_KEY || "").trim();
+    let verifiedFromEmail = (process.env.SENDGRID_FROM_EMAIL || "").trim();
     if (!verifiedFromEmail) verifiedFromEmail = "donations@yourstore.com";
 
     if (!apiKey) {
@@ -120,7 +117,14 @@ export async function sendDonationReceipt({
     const isValidLogo = (url: string | null | undefined) => {
         if (!url) return false;
         const trimmed = url.trim();
-        return trimmed !== "" && trimmed !== "null" && (trimmed.startsWith("http") || trimmed.startsWith("data:image"));
+        return trimmed !== "" && trimmed !== "null" && (trimmed.startsWith("http") || trimmed.startsWith("data:image") || trimmed.startsWith("//"));
+    };
+
+    const getLogoUrl = (url: string | null | undefined) => {
+        if (!url) return "";
+        const trimmed = url.trim();
+        if (trimmed.startsWith("//")) return "https:" + trimmed;
+        return trimmed;
     };
 
     if (isRecurring && (type === "receipt" || type === "pause" || type === "resume" || type === "cancellation")) {
@@ -135,7 +139,7 @@ export async function sendDonationReceipt({
         htmlContent = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6; background-color: #fff; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
       <div style="margin-bottom: 24px;">
-        ${isValidLogo(settings?.logoUrl) ? `<img src="${settings!.logoUrl}" alt="Logo" style="max-height: 50px; display: block;" />` : ""}
+        ${isValidLogo(settings?.logoUrl) ? `<img src="${getLogoUrl(settings!.logoUrl)}" alt="Logo" style="max-height: 50px; display: block;" />` : ""}
       </div>
 
       <div style="text-align: left; margin-bottom: 24px;">
@@ -189,7 +193,7 @@ export async function sendDonationReceipt({
 
         htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6;">
-      ${isValidLogo(settings?.logoUrl) ? `<div style="margin-bottom: 24px;"><img src="${settings!.logoUrl}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
+      ${isValidLogo(settings?.logoUrl) ? `<div style="margin-bottom: 24px;"><img src="${getLogoUrl(settings!.logoUrl)}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
       <h2 style="color: #008060;">${title}</h2>
       ${recurringBadge}
       <div>${finalBody}</div>
@@ -218,10 +222,15 @@ export async function sendDonationReceipt({
         return { success: true };
     } catch (error: any) {
         console.error("SendGrid rejected payload or failed:", error);
+        let errorMsg = String(error);
         if (error.response?.body) {
-            console.log("SendGrid Error Body:", JSON.stringify(error.response.body, null, 2));
+            const body = error.response.body;
+            console.log("SendGrid Error Body:", JSON.stringify(body, null, 2));
+            if (body.errors && body.errors.length > 0) {
+                errorMsg = body.errors[0].message;
+            }
         }
-        return { success: false, error: String(error) };
+        return { success: false, error: errorMsg };
     }
 }
 
