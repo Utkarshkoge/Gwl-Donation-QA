@@ -118,18 +118,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return data({ success: false, error: emailError.message || "Email failed to send. Please try again." }, { status: 500 });
         }
     } else if (logId) {
-        // Handle Staging logic (POS / Recurring donation receipt)
+        // Handle Staging logic (POS / Recurring / RoundUp / Preset donation receipt)
         let log = await prisma.posDonationLog.findUnique({ where: { id: logId } });
-        let logType: 'pos' | 'recurring' = 'pos';
+        let logType: 'pos' | 'recurring' | 'roundup' | 'preset' = 'pos';
 
         if (!log) {
             log = await (prisma as any).recurringDonationLog.findUnique({ where: { id: logId } });
-            logType = 'recurring';
+            if (log) logType = 'recurring';
         }
 
         if (!log) {
+            log = await (prisma as any).roundUpDonationLog.findUnique({ where: { id: logId } });
+            if (log) logType = 'roundup';
+        }
+
+        // Check preset Donation table (different schema)
+        let presetDonation: any = null;
+        if (!log) {
+            presetDonation = await prisma.donation.findUnique({
+                where: { id: logId },
+                include: { campaign: true },
+            });
+            if (presetDonation) logType = 'preset';
+        }
+
+        if (!log && !presetDonation) {
             return data({ success: false, error: "Log not found" }, { status: 404 });
         }
+
+        // Determine the order ID based on log type
+        const orderIdForQuery = presetDonation
+            ? `gid://shopify/Order/${presetDonation.orderId}`
+            : log.orderId;
 
         const orderResponse = await admin.graphql(
             `#graphql
@@ -147,7 +167,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           }
         }
       }`,
-            { variables: { id: log.orderId } }
+            { variables: { id: orderIdForQuery } }
         );
         const orderData = await orderResponse.json();
         const order = orderData.data?.order;
@@ -155,6 +175,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (!order || !order.email) {
             if (logType === 'pos') {
                 await prisma.posDonationLog.update({
+                    where: { id: logId },
+                    data: { receiptStatus: "failed" }
+                });
+            } else if (logType === 'roundup') {
+                await (prisma as any).roundUpDonationLog.update({
                     where: { id: logId },
                     data: { receiptStatus: "failed" }
                 });
@@ -170,36 +195,49 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const billingAddr = order.billingAddress
             ? `${order.billingAddress.name}\n${order.billingAddress.address1}${order.billingAddress.address2 ? ` ${order.billingAddress.address2}` : ""}\n${order.billingAddress.city}, ${order.billingAddress.provinceCode || ""} ${order.billingAddress.zip}\n${order.billingAddress.country}`
             : "";
-        const freqLabel = logType === 'recurring'
-            ? ((log as any).frequency === "weekly" ? "Weekly" : (log as any).frequency === "monthly" ? "Monthly" : "One-time")
-            : "One-time";
+
+        let freqLabel = "One-time";
+        if (logType === 'recurring') {
+            freqLabel = (log as any).frequency === "weekly" ? "Weekly" : (log as any).frequency === "monthly" ? "Monthly" : "One-time";
+        } else if (logType === 'roundup') {
+            freqLabel = "One-time";
+        } else if (logType === 'preset') {
+            freqLabel = "One-time";
+        }
 
         const config = await (prisma as any).recurringDonationConfig.findUnique({ where: { shop } });
         const donationProductId = config?.productId || "9946640679159";
 
-        const orderDetailResponse = await admin.graphql(
-            `#graphql
-      query getOrderDetail($id: ID!) {
-        order(id: $id) {
-          lineItems(first: 20) {
-            edges {
-              node {
-                title
-                variant {
-                    product {
-                        id
+        // For preset donations, use the campaign name; for others, query order line items
+        let productTitleForEmail = "Donation";
+        if (presetDonation) {
+            productTitleForEmail = presetDonation.campaign?.name || "Preset Donation";
+        } else {
+            const orderDetailResponse = await admin.graphql(
+                `#graphql
+          query getOrderDetail($id: ID!) {
+            order(id: $id) {
+              lineItems(first: 20) {
+                edges {
+                  node {
+                    title
+                    variant {
+                        product {
+                            id
+                        }
                     }
+                  }
                 }
               }
             }
-          }
+          }`,
+                { variables: { id: orderIdForQuery } }
+            );
+            const detailData = await orderDetailResponse.json();
+            const lineItems = detailData.data?.order?.lineItems?.edges?.map((e: any) => e.node) || [];
+            const donationItem = lineItems.find((li: any) => li.variant?.product?.id?.includes(donationProductId));
+            productTitleForEmail = donationItem?.title || "Donation";
         }
-      }`,
-            { variables: { id: log.orderId } }
-        );
-        const detailData = await orderDetailResponse.json();
-        const lineItems = detailData.data?.order?.lineItems?.edges?.map((e: any) => e.node) || [];
-        const donationItem = lineItems.find((li: any) => li.variant?.product?.id?.includes(donationProductId));
 
         let nextBillingDate = "";
         const createdDate = new Date(log.createdAt);
@@ -213,16 +251,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             nextBillingDate = createdDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         }
 
+        const donationAmount = presetDonation
+            ? presetDonation.amount.toFixed(2)
+            : log.donationAmount.toFixed(2);
+
         const res = await sendDonationReceipt({
             email: order.email,
             name: customerName,
-            amount: log.donationAmount.toFixed(2),
+            amount: donationAmount,
             orderNumber: order.name,
             shop,
             frequency: freqLabel,
             shippingAddress: shippingAddr,
             billingAddress: billingAddr,
-            productTitle: donationItem?.title || "Recurring Donation",
+            productTitle: productTitleForEmail,
             manageUrl: `https://${shop}/account/subscriptions`,
             nextBillingDate: nextBillingDate
         });
@@ -233,12 +275,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     where: { id: logId },
                     data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
                 });
-            } else {
+            } else if (logType === 'recurring') {
                 await (prisma as any).recurringDonationLog.update({
                     where: { id: logId },
                     data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
                 });
+            } else if (logType === 'roundup') {
+                await (prisma as any).roundUpDonationLog.update({
+                    where: { id: logId },
+                    data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
+                });
             }
+            // Preset donations don't have receiptStatus field — no update needed
             return data({ success: true });
         } else {
             if (logType === 'pos') {
@@ -246,8 +294,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     where: { id: logId },
                     data: { receiptStatus: "failed" }
                 });
-            } else {
+            } else if (logType === 'recurring') {
                 await (prisma as any).recurringDonationLog.update({
+                    where: { id: logId },
+                    data: { receiptStatus: "failed" }
+                });
+            } else if (logType === 'roundup') {
+                await (prisma as any).roundUpDonationLog.update({
                     where: { id: logId },
                     data: { receiptStatus: "failed" }
                 });

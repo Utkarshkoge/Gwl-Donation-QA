@@ -115,17 +115,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .filter(l => new Date(l.createdAt) >= last7DaysDate)
     .reduce((acc, l) => acc + (l.donationAmount || 0), 0);
 
-  // Legacy/Unified One-time stats from RecurringDonationLog (for data consistency during transition)
-  const legacyOneTimeStats = (recurringLogs as any[])
-    .filter(l => l.frequency === "one_time")
-    .reduce((acc, l) => acc + (l.donationAmount || 0), 0);
-  
-  const legacyOneTime7Days = (recurringLogs as any[])
-    .filter(l => l.frequency === "one_time" && new Date(l.createdAt) >= last7DaysDate)
-    .reduce((acc, l) => acc + (l.donationAmount || 0), 0);
-
-  const totalPreset = (presetStats._sum.amount || 0) + legacyOneTimeStats;
-  const last7DaysPreset = (presetLast7Days._sum.amount || 0) + legacyOneTime7Days;
+  const totalPreset = (presetStats._sum.amount || 0);
+  const last7DaysPreset = (presetLast7Days._sum.amount || 0);
   const totalImpact = totalPreset + totalPos + totalRoundup + totalRecurring;
   const totalLast7Days = last7DaysPreset + last7DaysPos + last7DaysRoundup + last7DaysRecurring;
 

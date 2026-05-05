@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type {
     ActionFunctionArgs,
     HeadersFunction,
@@ -209,12 +209,17 @@ export default function EmailSettingsPage() {
     const isSaving =
         fetcher.state === "submitting" && fetcher.formMethod === "POST";
 
+    const lastSaveRef = useRef<string | null>(null);
     useEffect(() => {
-        if (fetcher.data?.status === "success" && !isSaving) {
-            shopify.toast.show("Email settings saved successfully");
-            setInitialSettings({ ...settings });
+        if (fetcher.state === "idle" && fetcher.data?.status === "success") {
+            const key = JSON.stringify(settings);
+            if (key !== lastSaveRef.current) {
+                lastSaveRef.current = key;
+                shopify.toast.show("Email settings saved successfully");
+                setInitialSettings({ ...settings });
+            }
         }
-    }, [fetcher.data, shopify, isSaving, settings]);
+    }, [fetcher.state, fetcher.data, shopify, settings]);
 
     const hasChanges = Object.keys(settings).some(
         (key) => settings[key as keyof EmailSettings] !== initialSettings[key as keyof EmailSettings]

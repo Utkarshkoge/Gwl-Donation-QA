@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import RichTextEditor from "../components/RichTextEditor";
 import type {
     ActionFunctionArgs,
@@ -200,24 +200,41 @@ export default function PosDonation() {
         orderTag: savedSettings.orderTag,
     });
 
+    const [savedState, setSavedState] = useState<PosDonationSettings>({
+        enabled: savedSettings.enabled,
+        donationBasis: savedSettings.donationBasis,
+        donationType: savedSettings.donationType,
+        donationValue: savedSettings.donationValue,
+        minimumValue: savedSettings.minimumValue,
+        donationMessage: savedSettings.donationMessage,
+        tooltipMessage: savedSettings.tooltipMessage,
+        orderTag: savedSettings.orderTag,
+    });
+
     const isSaving =
         fetcher.state === "submitting" && fetcher.formMethod === "POST";
 
     const hasChanges =
-        settings.enabled !== (savedSettings.enabled ?? false) ||
-        settings.donationBasis !== (savedSettings.donationBasis ?? "order") ||
-        settings.donationType !== (savedSettings.donationType ?? "percentage") ||
-        Number(settings.donationValue) !== Number(savedSettings.donationValue ?? 0) ||
-        Number(settings.minimumValue) !== Number(savedSettings.minimumValue ?? 0) ||
-        settings.donationMessage !== (savedSettings.donationMessage ?? "") ||
-        settings.tooltipMessage !== (savedSettings.tooltipMessage ?? "") ||
-        settings.orderTag !== (savedSettings.orderTag ?? "");
+        settings.enabled !== savedState.enabled ||
+        settings.donationBasis !== savedState.donationBasis ||
+        settings.donationType !== savedState.donationType ||
+        Number(settings.donationValue) !== Number(savedState.donationValue) ||
+        Number(settings.minimumValue) !== Number(savedState.minimumValue) ||
+        settings.donationMessage !== savedState.donationMessage ||
+        settings.tooltipMessage !== savedState.tooltipMessage ||
+        settings.orderTag !== savedState.orderTag;
 
+    const lastSaveRef = useRef<string | null>(null);
     useEffect(() => {
-        if (fetcher.data?.status === "success") {
-            shopify.toast.show("Settings saved successfully");
+        if (fetcher.state === "idle" && fetcher.data?.status === "success") {
+            const key = JSON.stringify(settings);
+            if (key !== lastSaveRef.current) {
+                lastSaveRef.current = key;
+                shopify.toast.show("Settings saved successfully");
+                setSavedState({ ...settings });
+            }
         }
-    }, [fetcher.data, shopify]);
+    }, [fetcher.state, fetcher.data, shopify, settings]);
 
     const handleSettingChange = useCallback(
         (field: keyof PosDonationSettings, value: string | number | boolean) => {

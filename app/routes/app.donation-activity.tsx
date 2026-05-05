@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
@@ -93,6 +93,22 @@ export default function DonationActivity() {
         resendFetcher.submit({ logId }, { method: "POST", action: "/api/resend-donation-email" });
         shopify.toast.show("Attempting to resend receipt...");
     }, [resendFetcher, shopify]);
+
+    // Track last resend response to show feedback only once
+    const lastResendRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (resendFetcher.state === "idle" && resendFetcher.data) {
+            const key = JSON.stringify(resendFetcher.data);
+            if (key !== lastResendRef.current) {
+                lastResendRef.current = key;
+                if ((resendFetcher.data as any).success) {
+                    shopify.toast.show("Receipt resent successfully!");
+                } else {
+                    shopify.toast.show((resendFetcher.data as any).error || "Failed to resend receipt", { isError: true } as any);
+                }
+            }
+        }
+    }, [resendFetcher.state, resendFetcher.data, shopify]);
 
     // Helper to map frequency to readable name
     const getFrequencyLabel = (freq: string | null) => {
@@ -248,7 +264,6 @@ export default function DonationActivity() {
                                         <th style={{ padding: "12px 10px", fontWeight: "bold", fontSize: "13px" }}>Order</th>
                                         <th style={{ padding: "12px 10px", fontWeight: "bold", fontSize: "13px", textAlign: "center" }}>Type</th>
                                         <th style={{ padding: "12px 10px", fontWeight: "bold", fontSize: "13px", textAlign: "right" }}>Donation Amount</th>
-                                        <th style={{ padding: "12px 10px", fontWeight: "bold", fontSize: "13px", textAlign: "right" }}>Order Total</th>
                                         <th style={{ padding: "12px 10px", fontWeight: "bold", fontSize: "13px", textAlign: "center" }}>Receipt</th>
                                         <th style={{ padding: "12px 10px", fontWeight: "bold", fontSize: "13px", textAlign: "right" }}>Action</th>
                                     </tr>
@@ -293,7 +308,6 @@ export default function DonationActivity() {
                                                 </span>
                                             </td>
                                             <td style={{ padding: "12px 10px", textAlign: "right", fontWeight: "bold", fontSize: "13px", color: log.status !== "active" ? "#6D7175" : "#6C4A79", textDecoration: log.status !== "active" ? "line-through" : "none", background: "white" }}>{moneyFormatter.format(log.donationAmount || 0)}</td>
-                                            <td style={{ padding: "12px 10px", textAlign: "right", fontSize: "13px", background: "white" }}>{moneyFormatter.format(log.orderTotal || 0)}</td>
                                             <td style={{ padding: "12px 10px", textAlign: "center", background: "white" }}>
                                                 <div style={{
                                                     display: "inline-block",

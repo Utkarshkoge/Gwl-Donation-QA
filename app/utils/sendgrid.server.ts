@@ -176,14 +176,14 @@ export async function sendDonationReceipt({
     } else {
         const recurringBadge = (frequency && frequency !== "One-time")
             ? `<div style="margin-bottom: 12px; padding: 8px 14px; background: #e8f5e9; border-radius: 6px; display: inline-block; font-size: 13px; color: #2e7d32;">
-          <strong>${frequency} Recurring Donation</strong>
+          <strong>${frequency} Donation</strong>
           ${nextBillingDate ? ` &mdash; next charge on <strong>${nextBillingDate}</strong>` : ""}
          </div>`
             : "";
 
         htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6;">
-      ${(settings as any)?.logoUrl ? `<div style="margin-bottom: 24px;"><img src="${(settings as any).logoUrl}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
+      ${settings?.logoUrl && settings.logoUrl.trim() !== '' && settings.logoUrl !== 'null' ? `<div style="margin-bottom: 24px;"><img src="${settings.logoUrl}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
       <h2 style="color: #008060;">${title}</h2>
       ${recurringBadge}
       <div>${finalBody}</div>

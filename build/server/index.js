@@ -596,12 +596,12 @@ async function sendDonationReceipt({
     `;
   } else {
     const recurringBadge = frequency && frequency !== "One-time" ? `<div style="margin-bottom: 12px; padding: 8px 14px; background: #e8f5e9; border-radius: 6px; display: inline-block; font-size: 13px; color: #2e7d32;">
-          <strong>${frequency} Recurring Donation</strong>
+          <strong>${frequency} Donation</strong>
           ${nextBillingDate ? ` &mdash; next charge on <strong>${nextBillingDate}</strong>` : ""}
          </div>` : "";
     htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6;">
-      ${(settings == null ? void 0 : settings.logoUrl) ? `<div style="margin-bottom: 24px;"><img src="${settings.logoUrl}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
+      ${(settings == null ? void 0 : settings.logoUrl) && settings.logoUrl.trim() !== "" && settings.logoUrl !== "null" ? `<div style="margin-bottom: 24px;"><img src="${settings.logoUrl}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
       <h2 style="color: #008060;">${title}</h2>
       ${recurringBadge}
       <div>${finalBody}</div>
@@ -1120,7 +1120,7 @@ const route7 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProper
 const action$i = async ({
   request
 }) => {
-  var _a2, _b, _c, _d, _e;
+  var _a2, _b, _c, _d, _e, _f;
   const url = new URL(request.url);
   if (url.protocol === "http:" && !url.hostname.includes("localhost")) {
     url.protocol = "https:";
@@ -1251,9 +1251,29 @@ const action$i = async ({
           id: logId
         }
       });
-      logType = "recurring";
+      if (log) logType = "recurring";
     }
     if (!log) {
+      log = await prisma.roundUpDonationLog.findUnique({
+        where: {
+          id: logId
+        }
+      });
+      if (log) logType = "roundup";
+    }
+    let presetDonation = null;
+    if (!log) {
+      presetDonation = await prisma.donation.findUnique({
+        where: {
+          id: logId
+        },
+        include: {
+          campaign: true
+        }
+      });
+      if (presetDonation) logType = "preset";
+    }
+    if (!log && !presetDonation) {
       return data({
         success: false,
         error: "Log not found"
@@ -1261,6 +1281,7 @@ const action$i = async ({
         status: 404
       });
     }
+    const orderIdForQuery = presetDonation ? `gid://shopify/Order/${presetDonation.orderId}` : log.orderId;
     const orderResponse = await admin.graphql(`#graphql
       query getOrder($id: ID!) {
         order(id: $id) {
@@ -1277,7 +1298,7 @@ const action$i = async ({
         }
       }`, {
       variables: {
-        id: log.orderId
+        id: orderIdForQuery
       }
     });
     const orderData = await orderResponse.json();
@@ -1285,6 +1306,15 @@ const action$i = async ({
     if (!order || !order.email) {
       if (logType === "pos") {
         await prisma.posDonationLog.update({
+          where: {
+            id: logId
+          },
+          data: {
+            receiptStatus: "failed"
+          }
+        });
+      } else if (logType === "roundup") {
+        await prisma.roundUpDonationLog.update({
           where: {
             id: logId
           },
@@ -1309,40 +1339,53 @@ ${order.shippingAddress.country}` : "";
 ${order.billingAddress.address1}${order.billingAddress.address2 ? ` ${order.billingAddress.address2}` : ""}
 ${order.billingAddress.city}, ${order.billingAddress.provinceCode || ""} ${order.billingAddress.zip}
 ${order.billingAddress.country}` : "";
-    const freqLabel = logType === "recurring" ? log.frequency === "weekly" ? "Weekly" : log.frequency === "monthly" ? "Monthly" : "One-time" : "One-time";
+    let freqLabel = "One-time";
+    if (logType === "recurring") {
+      freqLabel = log.frequency === "weekly" ? "Weekly" : log.frequency === "monthly" ? "Monthly" : "One-time";
+    } else if (logType === "roundup") {
+      freqLabel = "One-time";
+    } else if (logType === "preset") {
+      freqLabel = "One-time";
+    }
     const config = await prisma.recurringDonationConfig.findUnique({
       where: {
         shop
       }
     });
     const donationProductId = (config == null ? void 0 : config.productId) || "9946640679159";
-    const orderDetailResponse = await admin.graphql(`#graphql
-      query getOrderDetail($id: ID!) {
-        order(id: $id) {
-          lineItems(first: 20) {
-            edges {
-              node {
-                title
-                variant {
-                    product {
-                        id
+    let productTitleForEmail = "Donation";
+    if (presetDonation) {
+      productTitleForEmail = ((_b = presetDonation.campaign) == null ? void 0 : _b.name) || "Preset Donation";
+    } else {
+      const orderDetailResponse = await admin.graphql(`#graphql
+          query getOrderDetail($id: ID!) {
+            order(id: $id) {
+              lineItems(first: 20) {
+                edges {
+                  node {
+                    title
+                    variant {
+                        product {
+                            id
+                        }
                     }
+                  }
                 }
               }
             }
-          }
+          }`, {
+        variables: {
+          id: orderIdForQuery
         }
-      }`, {
-      variables: {
-        id: log.orderId
-      }
-    });
-    const detailData = await orderDetailResponse.json();
-    const lineItems = ((_e = (_d = (_c = (_b = detailData.data) == null ? void 0 : _b.order) == null ? void 0 : _c.lineItems) == null ? void 0 : _d.edges) == null ? void 0 : _e.map((e) => e.node)) || [];
-    const donationItem = lineItems.find((li) => {
-      var _a3, _b2, _c2;
-      return (_c2 = (_b2 = (_a3 = li.variant) == null ? void 0 : _a3.product) == null ? void 0 : _b2.id) == null ? void 0 : _c2.includes(donationProductId);
-    });
+      });
+      const detailData = await orderDetailResponse.json();
+      const lineItems = ((_f = (_e = (_d = (_c = detailData.data) == null ? void 0 : _c.order) == null ? void 0 : _d.lineItems) == null ? void 0 : _e.edges) == null ? void 0 : _f.map((e) => e.node)) || [];
+      const donationItem = lineItems.find((li) => {
+        var _a3, _b2, _c2;
+        return (_c2 = (_b2 = (_a3 = li.variant) == null ? void 0 : _a3.product) == null ? void 0 : _b2.id) == null ? void 0 : _c2.includes(donationProductId);
+      });
+      productTitleForEmail = (donationItem == null ? void 0 : donationItem.title) || "Donation";
+    }
     let nextBillingDate = "";
     const createdDate = new Date(log.createdAt);
     const frequencyFromLog = log.frequency;
@@ -1361,16 +1404,17 @@ ${order.billingAddress.country}` : "";
         year: "numeric"
       });
     }
+    const donationAmount = presetDonation ? presetDonation.amount.toFixed(2) : log.donationAmount.toFixed(2);
     const res = await sendDonationReceipt({
       email: order.email,
       name: customerName,
-      amount: log.donationAmount.toFixed(2),
+      amount: donationAmount,
       orderNumber: order.name,
       shop,
       frequency: freqLabel,
       shippingAddress: shippingAddr,
       billingAddress: billingAddr,
-      productTitle: (donationItem == null ? void 0 : donationItem.title) || "Recurring Donation",
+      productTitle: productTitleForEmail,
       manageUrl: `https://${shop}/account/subscriptions`,
       nextBillingDate
     });
@@ -1386,8 +1430,19 @@ ${order.billingAddress.country}` : "";
             isResent: true
           }
         });
-      } else {
+      } else if (logType === "recurring") {
         await prisma.recurringDonationLog.update({
+          where: {
+            id: logId
+          },
+          data: {
+            receiptStatus: "sent",
+            receiptSentAt: /* @__PURE__ */ new Date(),
+            isResent: true
+          }
+        });
+      } else if (logType === "roundup") {
+        await prisma.roundUpDonationLog.update({
           where: {
             id: logId
           },
@@ -1411,8 +1466,17 @@ ${order.billingAddress.country}` : "";
             receiptStatus: "failed"
           }
         });
-      } else {
+      } else if (logType === "recurring") {
         await prisma.recurringDonationLog.update({
+          where: {
+            id: logId
+          },
+          data: {
+            receiptStatus: "failed"
+          }
+        });
+      } else if (logType === "roundup") {
+        await prisma.roundUpDonationLog.update({
           where: {
             id: logId
           },
@@ -2019,7 +2083,7 @@ const route12 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePrope
 const action$d = async ({
   request
 }) => {
-  var _a2, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
+  var _a2, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r;
   console.log(`
 
 [!!! WEBHOOK HIT !!!] Incoming request to /webhooks/orders/create at ${(/* @__PURE__ */ new Date()).toISOString()}`);
@@ -2272,12 +2336,13 @@ const action$d = async ({
           if (effectiveSettings.donationBasis === "product") {
             for (const lineItem of order.line_items || []) {
               const itemPriceCents = parseFloat(lineItem.price || 0) * 100;
+              const quantity = lineItem.quantity || 1;
               if (itemPriceCents >= minValCents) {
                 isApplicable = true;
                 isPosDonationSource = true;
-                samplePriceCents = itemPriceCents;
-                donationAmtCents = effectiveSettings.donationType === "percentage" ? effectiveSettings.donationValue / 100 * samplePriceCents : effectiveSettings.donationValue * 100;
-                break;
+                const lineTotalCents = itemPriceCents * quantity;
+                samplePriceCents += lineTotalCents;
+                donationAmtCents += effectiveSettings.donationType === "percentage" ? effectiveSettings.donationValue / 100 * lineTotalCents : effectiveSettings.donationValue * 100 * quantity;
               }
             }
           } else if (totalCents >= minValCents) {
@@ -2452,50 +2517,8 @@ ${order.billing_address.country}` : "";
             }
           });
         } else if (hasDirectDonationProduct && frequency === "one_time") {
-          let globalCampaign = await prisma.campaign.findFirst({
-            where: {
-              shop,
-              name: "General Donation"
-            }
-          });
-          if (!globalCampaign) {
-            globalCampaign = await prisma.campaign.create({
-              data: {
-                shop,
-                name: "General Donation",
-                description: "Global one-time donations from the widget",
-                enabled: true
-              }
-            });
-          }
-          const donationItem = (order.line_items || []).find((li) => String(li.product_id) === String(DONATION_PRODUCT_ID));
-          const variantIdStr = ((_q = donationItem == null ? void 0 : donationItem.variant_id) == null ? void 0 : _q.toString()) || "global";
-          await prisma.donation.upsert({
-            where: {
-              orderId_shopifyVariantId: {
-                orderId,
-                shopifyVariantId: variantIdStr
-              }
-            },
-            create: {
-              campaignId: globalCampaign.id,
-              orderId,
-              orderNumber: order.name,
-              amount: parseFloat(donationAmtFormatted),
-              currency,
-              donorName: currentCustomerName,
-              donorEmail: currentCustomerEmail,
-              shopifyProductId: DONATION_PRODUCT_ID,
-              shopifyVariantId: variantIdStr,
-              createdAt
-            },
-            update: {
-              amount: parseFloat(donationAmtFormatted),
-              orderNumber: order.name
-            }
-          });
-          console.log(`[Webhook] One-time global donation logged to Donation table (Unified Model).`);
           hasCampaignDonation = true;
+          console.log(`[Webhook] One-time global donation treated as Preset (no General Donation campaign).`);
         } else if (hasRoundUpDonation) {
           await prisma.roundUpDonationLog.upsert({
             where: {
@@ -2554,7 +2577,7 @@ ${order.billing_address.country}` : "";
             const orderTag = isSub ? frequency === "monthly" ? "recurring_donation_monthly" : "recurring_donation_weekly" : "preset_donation";
             const customerTag = isSub ? frequency === "monthly" ? "recurring_donor_monthly" : "recurring_donor_weekly" : "preset_donor";
             if (!existingTags.includes(orderTag)) existingTags.push(orderTag);
-            const customerId = order.customer_gql_id || (((_r = order.customer) == null ? void 0 : _r.id) ? `gid://shopify/Customer/${order.customer.id}` : null);
+            const customerId = order.customer_gql_id || (((_q = order.customer) == null ? void 0 : _q.id) ? `gid://shopify/Customer/${order.customer.id}` : null);
             if (customerId) {
               await admin.graphql(`#graphql
                                 mutation tagsAdd($id: ID!, $tags: [String!]!) { tagsAdd(id: $id, tags: $tags) { node { id } } }`, {
@@ -2575,7 +2598,7 @@ ${order.billing_address.country}` : "";
           }
           if (hasCampaignDonation) {
             if (!existingTags.includes("preset_donation")) existingTags.push("preset_donation");
-            const customerId = order.customer_gql_id || (((_s = order.customer) == null ? void 0 : _s.id) ? `gid://shopify/Customer/${order.customer.id}` : null);
+            const customerId = order.customer_gql_id || (((_r = order.customer) == null ? void 0 : _r.id) ? `gid://shopify/Customer/${order.customer.id}` : null);
             if (customerId) {
               await admin.graphql(`#graphql
                                 mutation tagsAdd($id: ID!, $tags: [String!]!) { tagsAdd(id: $id, tags: $tags) { node { id } } }`, {
@@ -6248,6 +6271,22 @@ const app_donationActivity = UNSAFE_withComponentProps(function DonationActivity
     });
     shopify2.toast.show("Attempting to resend receipt...");
   }, [resendFetcher, shopify2]);
+  const lastResendRef = useRef(null);
+  useEffect(() => {
+    if (resendFetcher.state === "idle" && resendFetcher.data) {
+      const key = JSON.stringify(resendFetcher.data);
+      if (key !== lastResendRef.current) {
+        lastResendRef.current = key;
+        if (resendFetcher.data.success) {
+          shopify2.toast.show("Receipt resent successfully!");
+        } else {
+          shopify2.toast.show(resendFetcher.data.error || "Failed to resend receipt", {
+            isError: true
+          });
+        }
+      }
+    }
+  }, [resendFetcher.state, resendFetcher.data, shopify2]);
   const getFrequencyLabel = (freq) => {
     if (freq === "monthly") return "Monthly";
     if (freq === "weekly") return "Weekly";
@@ -6478,14 +6517,6 @@ const app_donationActivity = UNSAFE_withComponentProps(function DonationActivity
                     padding: "12px 10px",
                     fontWeight: "bold",
                     fontSize: "13px",
-                    textAlign: "right"
-                  },
-                  children: "Order Total"
-                }), /* @__PURE__ */ jsx("th", {
-                  style: {
-                    padding: "12px 10px",
-                    fontWeight: "bold",
-                    fontSize: "13px",
                     textAlign: "center"
                   },
                   children: "Receipt"
@@ -6564,14 +6595,6 @@ const app_donationActivity = UNSAFE_withComponentProps(function DonationActivity
                       background: "white"
                     },
                     children: moneyFormatter.format(log.donationAmount || 0)
-                  }), /* @__PURE__ */ jsx("td", {
-                    style: {
-                      padding: "12px 10px",
-                      textAlign: "right",
-                      fontSize: "13px",
-                      background: "white"
-                    },
-                    children: moneyFormatter.format(log.orderTotal || 0)
                   }), /* @__PURE__ */ jsx("td", {
                     style: {
                       padding: "12px 10px",
@@ -8064,15 +8087,20 @@ const app_emailSettings = UNSAFE_withComponentProps(function EmailSettingsPage()
     ...settings
   }));
   const isSaving = fetcher.state === "submitting" && fetcher.formMethod === "POST";
+  const lastSaveRef = useRef(null);
   useEffect(() => {
     var _a2;
-    if (((_a2 = fetcher.data) == null ? void 0 : _a2.status) === "success" && !isSaving) {
-      shopify2.toast.show("Email settings saved successfully");
-      setInitialSettings({
-        ...settings
-      });
+    if (fetcher.state === "idle" && ((_a2 = fetcher.data) == null ? void 0 : _a2.status) === "success") {
+      const key = JSON.stringify(settings);
+      if (key !== lastSaveRef.current) {
+        lastSaveRef.current = key;
+        shopify2.toast.show("Email settings saved successfully");
+        setInitialSettings({
+          ...settings
+        });
+      }
     }
-  }, [fetcher.data, shopify2, isSaving, settings]);
+  }, [fetcher.state, fetcher.data, shopify2, settings]);
   const hasChanges = Object.keys(settings).some((key) => settings[key] !== initialSettings[key]);
   const [errors, setErrors] = useState({});
   const validate = () => {
@@ -9037,14 +9065,32 @@ const app_posDonation = UNSAFE_withComponentProps(function PosDonation() {
     tooltipMessage: savedSettings.tooltipMessage,
     orderTag: savedSettings.orderTag
   });
+  const [savedState, setSavedState] = useState({
+    enabled: savedSettings.enabled,
+    donationBasis: savedSettings.donationBasis,
+    donationType: savedSettings.donationType,
+    donationValue: savedSettings.donationValue,
+    minimumValue: savedSettings.minimumValue,
+    donationMessage: savedSettings.donationMessage,
+    tooltipMessage: savedSettings.tooltipMessage,
+    orderTag: savedSettings.orderTag
+  });
   const isSaving = fetcher.state === "submitting" && fetcher.formMethod === "POST";
-  const hasChanges = settings.enabled !== (savedSettings.enabled ?? false) || settings.donationBasis !== (savedSettings.donationBasis ?? "order") || settings.donationType !== (savedSettings.donationType ?? "percentage") || Number(settings.donationValue) !== Number(savedSettings.donationValue ?? 0) || Number(settings.minimumValue) !== Number(savedSettings.minimumValue ?? 0) || settings.donationMessage !== (savedSettings.donationMessage ?? "") || settings.tooltipMessage !== (savedSettings.tooltipMessage ?? "") || settings.orderTag !== (savedSettings.orderTag ?? "");
+  const hasChanges = settings.enabled !== savedState.enabled || settings.donationBasis !== savedState.donationBasis || settings.donationType !== savedState.donationType || Number(settings.donationValue) !== Number(savedState.donationValue) || Number(settings.minimumValue) !== Number(savedState.minimumValue) || settings.donationMessage !== savedState.donationMessage || settings.tooltipMessage !== savedState.tooltipMessage || settings.orderTag !== savedState.orderTag;
+  const lastSaveRef = useRef(null);
   useEffect(() => {
     var _a2;
-    if (((_a2 = fetcher.data) == null ? void 0 : _a2.status) === "success") {
-      shopify2.toast.show("Settings saved successfully");
+    if (fetcher.state === "idle" && ((_a2 = fetcher.data) == null ? void 0 : _a2.status) === "success") {
+      const key = JSON.stringify(settings);
+      if (key !== lastSaveRef.current) {
+        lastSaveRef.current = key;
+        shopify2.toast.show("Settings saved successfully");
+        setSavedState({
+          ...settings
+        });
+      }
     }
-  }, [fetcher.data, shopify2]);
+  }, [fetcher.state, fetcher.data, shopify2, settings]);
   const handleSettingChange = useCallback((field, value) => {
     setSettings((prev) => ({
       ...prev,
@@ -11996,10 +12042,8 @@ const loader$1 = async ({
   const allRecurringLogs = recurringLogs.filter((l) => l.frequency !== "one_time");
   const totalRecurring = allRecurringLogs.reduce((acc, l) => acc + (l.donationAmount || 0), 0);
   const last7DaysRecurring = allRecurringLogs.filter((l) => new Date(l.createdAt) >= last7DaysDate).reduce((acc, l) => acc + (l.donationAmount || 0), 0);
-  const legacyOneTimeStats = recurringLogs.filter((l) => l.frequency === "one_time").reduce((acc, l) => acc + (l.donationAmount || 0), 0);
-  const legacyOneTime7Days = recurringLogs.filter((l) => l.frequency === "one_time" && new Date(l.createdAt) >= last7DaysDate).reduce((acc, l) => acc + (l.donationAmount || 0), 0);
-  const totalPreset = (presetStats._sum.amount || 0) + legacyOneTimeStats;
-  const last7DaysPreset = (presetLast7Days._sum.amount || 0) + legacyOneTime7Days;
+  const totalPreset = presetStats._sum.amount || 0;
+  const last7DaysPreset = presetLast7Days._sum.amount || 0;
   const totalImpact = totalPreset + totalPos + totalRoundup + totalRecurring;
   const totalLast7Days = last7DaysPreset + last7DaysPos + last7DaysRoundup + last7DaysRecurring;
   let activeChannels = 0;
@@ -13072,7 +13116,7 @@ const route38 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePrope
   headers,
   loader
 }, Symbol.toStringTag, { value: "Module" }));
-const serverManifest = { "entry": { "module": "/assets/entry.client-Tq8EDINX.js", "imports": ["/assets/jsx-runtime-lA1hjGOj.js", "/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/index-C8UdS5-V.js"], "css": ["/assets/styles-x1cbIzLV.css"] }, "routes": { "root": { "id": "root", "parentId": void 0, "path": "", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/root-CgTQuY8J.js", "imports": ["/assets/jsx-runtime-lA1hjGOj.js", "/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/index-C8UdS5-V.js"], "css": ["/assets/styles-x1cbIzLV.css"], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.subscription_contracts.create": { "id": "routes/webhooks.subscription_contracts.create", "parentId": "root", "path": "webhooks/subscription_contracts/create", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.subscription_contracts.create-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.subscription_contracts.update": { "id": "routes/webhooks.subscription_contracts.update", "parentId": "root", "path": "webhooks/subscription_contracts/update", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.subscription_contracts.update-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.app_subscriptions.update": { "id": "routes/webhooks.app_subscriptions.update", "parentId": "root", "path": "webhooks/app_subscriptions/update", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.app_subscriptions.update-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.customer.subscription-action": { "id": "routes/api.customer.subscription-action", "parentId": "root", "path": "api/customer/subscription-action", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.customer.subscription-action-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.customer.subscription-status": { "id": "routes/api.customer.subscription-status", "parentId": "root", "path": "api/customer/subscription-status", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.customer.subscription-status-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/apps.pos-donation.settings": { "id": "routes/apps.pos-donation.settings", "parentId": "root", "path": "apps/pos-donation/settings", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/apps.pos-donation.settings-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.app.scopes_update": { "id": "routes/webhooks.app.scopes_update", "parentId": "root", "path": "webhooks/app/scopes_update", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.app.scopes_update-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.resend-donation-email": { "id": "routes/api.resend-donation-email", "parentId": "root", "path": "api/resend-donation-email", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.resend-donation-email-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.orders.cancelled": { "id": "routes/webhooks.orders.cancelled", "parentId": "root", "path": "webhooks/orders/cancelled", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.orders.cancelled-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.custom-donation-cart": { "id": "routes/api.custom-donation-cart", "parentId": "root", "path": "api/custom-donation-cart", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.custom-donation-cart-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.app.uninstalled": { "id": "routes/webhooks.app.uninstalled", "parentId": "root", "path": "webhooks/app/uninstalled", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.app.uninstalled-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.refunds.create": { "id": "routes/webhooks.refunds.create", "parentId": "root", "path": "webhooks/refunds/create", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.refunds.create-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.orders.create": { "id": "routes/webhooks.orders.create", "parentId": "root", "path": "webhooks/orders/create", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.orders.create-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.block-config": { "id": "routes/api.block-config", "parentId": "root", "path": "api/block-config", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.block-config-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.pos-donation": { "id": "routes/api.pos-donation", "parentId": "root", "path": "api/pos-donation", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.pos-donation-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.pos-donation.settings": { "id": "routes/api.pos-donation.settings", "parentId": "routes/api.pos-donation", "path": "settings", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.pos-donation.settings-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.campaigns": { "id": "routes/api.campaigns", "parentId": "root", "path": "api/campaigns", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.campaigns-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/subscriptions": { "id": "routes/subscriptions", "parentId": "root", "path": "subscriptions", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/subscriptions-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/subscriptions.$id": { "id": "routes/subscriptions.$id", "parentId": "routes/subscriptions", "path": ":id", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/subscriptions._id-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/auth.login": { "id": "routes/auth.login", "parentId": "root", "path": "auth/login", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/route-DLYHH8Lt.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/AppProxyProvider-CSPIe7t3.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/_index": { "id": "routes/_index", "parentId": "root", "path": void 0, "index": true, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/route-5FmIFhbT.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js"], "css": ["/assets/route-Xpdx9QZl.css"], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/auth.$": { "id": "routes/auth.$", "parentId": "root", "path": "auth/*", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/auth._-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app": { "id": "routes/app", "parentId": "root", "path": "app", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": true, "module": "/assets/app-BiuH2B0n.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/AppProxyProvider-CSPIe7t3.js", "/assets/context-DkLB1Z2_.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.preset-donation_.delete.$id": { "id": "routes/app.preset-donation_.delete.$id", "parentId": "routes/app", "path": "preset-donation/delete/:id", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/app.preset-donation_.delete._id-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.preset-donation_.edit.$id": { "id": "routes/app.preset-donation_.edit.$id", "parentId": "routes/app", "path": "preset-donation/edit/:id", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.preset-donation_.edit._id-Cm8neKpN.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/AddCampaign-BnSGFgtp.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.recurring-subscriptions": { "id": "routes/app.recurring-subscriptions", "parentId": "routes/app", "path": "recurring-subscriptions", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.recurring-subscriptions-BSBprR3v.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/useAppBridge-Bj34gXAL.js", "/assets/context-DkLB1Z2_.js", "/assets/BlockStack-BQsk5ghl.js", "/assets/index-C8UdS5-V.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.preset-donation_.add": { "id": "routes/app.preset-donation_.add", "parentId": "routes/app", "path": "preset-donation/add", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.preset-donation_.add-D9x6-Nyw.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/AddCampaign-BnSGFgtp.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.donation-activity": { "id": "routes/app.donation-activity", "parentId": "routes/app", "path": "donation-activity", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.donation-activity-s0Rntl-l.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/features-D7zFNnvn.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.perset-donation": { "id": "routes/app.perset-donation", "parentId": "routes/app", "path": "perset-donation", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.perset-donation-DMCJVfed.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.preset-donation": { "id": "routes/app.preset-donation", "parentId": "routes/app", "path": "preset-donation", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.preset-donation-BbFFV4cd.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/ConfigurationTab-uPFD0stB.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.email-settings": { "id": "routes/app.email-settings", "parentId": "routes/app", "path": "email-settings", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.email-settings-CrTMqufE.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/features-D7zFNnvn.js", "/assets/RichTextEditor-euPN7XAi.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.track-donation": { "id": "routes/app.track-donation", "parentId": "routes/app", "path": "track-donation", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.track-donation-C7tuclun.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.pos-donation": { "id": "routes/app.pos-donation", "parentId": "routes/app", "path": "pos-donation", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.pos-donation-B1tIQ-iO.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/RichTextEditor-euPN7XAi.js", "/assets/features-D7zFNnvn.js", "/assets/ConfigurationTab-uPFD0stB.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.billing": { "id": "routes/app.billing", "parentId": "routes/app", "path": "billing", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.billing-B_2PUpXr.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.pricing": { "id": "routes/app.pricing", "parentId": "routes/app", "path": "pricing", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.pricing-0xR2L-Xd.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/features-D7zFNnvn.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.roundup": { "id": "routes/app.roundup", "parentId": "routes/app", "path": "roundup", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.roundup-CntNnkR1.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/ConfigurationTab-uPFD0stB.js", "/assets/BlockStack-BQsk5ghl.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app._index": { "id": "routes/app._index", "parentId": "routes/app", "path": void 0, "index": true, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app._index-CNI1I9-R.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.help": { "id": "routes/app.help", "parentId": "routes/app", "path": "help", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.help-B6qucMPo.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 } }, "url": "/assets/manifest-ce7655b6.js", "version": "ce7655b6", "sri": void 0 };
+const serverManifest = { "entry": { "module": "/assets/entry.client-DiL8JACE.js", "imports": ["/assets/jsx-runtime-lA1hjGOj.js", "/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/index-C8UdS5-V.js"], "css": ["/assets/entry-x1cbIzLV.css"] }, "routes": { "root": { "id": "root", "parentId": void 0, "path": "", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/root-CgTQuY8J.js", "imports": ["/assets/jsx-runtime-lA1hjGOj.js", "/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/index-C8UdS5-V.js"], "css": ["/assets/entry-x1cbIzLV.css"], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.subscription_contracts.create": { "id": "routes/webhooks.subscription_contracts.create", "parentId": "root", "path": "webhooks/subscription_contracts/create", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.subscription_contracts.create-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.subscription_contracts.update": { "id": "routes/webhooks.subscription_contracts.update", "parentId": "root", "path": "webhooks/subscription_contracts/update", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.subscription_contracts.update-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.app_subscriptions.update": { "id": "routes/webhooks.app_subscriptions.update", "parentId": "root", "path": "webhooks/app_subscriptions/update", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.app_subscriptions.update-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.customer.subscription-action": { "id": "routes/api.customer.subscription-action", "parentId": "root", "path": "api/customer/subscription-action", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.customer.subscription-action-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.customer.subscription-status": { "id": "routes/api.customer.subscription-status", "parentId": "root", "path": "api/customer/subscription-status", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.customer.subscription-status-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/apps.pos-donation.settings": { "id": "routes/apps.pos-donation.settings", "parentId": "root", "path": "apps/pos-donation/settings", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/apps.pos-donation.settings-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.app.scopes_update": { "id": "routes/webhooks.app.scopes_update", "parentId": "root", "path": "webhooks/app/scopes_update", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.app.scopes_update-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.resend-donation-email": { "id": "routes/api.resend-donation-email", "parentId": "root", "path": "api/resend-donation-email", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.resend-donation-email-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.orders.cancelled": { "id": "routes/webhooks.orders.cancelled", "parentId": "root", "path": "webhooks/orders/cancelled", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.orders.cancelled-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.custom-donation-cart": { "id": "routes/api.custom-donation-cart", "parentId": "root", "path": "api/custom-donation-cart", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.custom-donation-cart-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.app.uninstalled": { "id": "routes/webhooks.app.uninstalled", "parentId": "root", "path": "webhooks/app/uninstalled", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.app.uninstalled-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.refunds.create": { "id": "routes/webhooks.refunds.create", "parentId": "root", "path": "webhooks/refunds/create", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.refunds.create-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/webhooks.orders.create": { "id": "routes/webhooks.orders.create", "parentId": "root", "path": "webhooks/orders/create", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/webhooks.orders.create-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.block-config": { "id": "routes/api.block-config", "parentId": "root", "path": "api/block-config", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.block-config-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.pos-donation": { "id": "routes/api.pos-donation", "parentId": "root", "path": "api/pos-donation", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.pos-donation-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.pos-donation.settings": { "id": "routes/api.pos-donation.settings", "parentId": "routes/api.pos-donation", "path": "settings", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.pos-donation.settings-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/api.campaigns": { "id": "routes/api.campaigns", "parentId": "root", "path": "api/campaigns", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/api.campaigns-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/subscriptions": { "id": "routes/subscriptions", "parentId": "root", "path": "subscriptions", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/subscriptions-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/subscriptions.$id": { "id": "routes/subscriptions.$id", "parentId": "routes/subscriptions", "path": ":id", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/subscriptions._id-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/auth.login": { "id": "routes/auth.login", "parentId": "root", "path": "auth/login", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/route-DLYHH8Lt.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/AppProxyProvider-CSPIe7t3.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/_index": { "id": "routes/_index", "parentId": "root", "path": void 0, "index": true, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/route-5FmIFhbT.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js"], "css": ["/assets/route-Xpdx9QZl.css"], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/auth.$": { "id": "routes/auth.$", "parentId": "root", "path": "auth/*", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/auth._-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app": { "id": "routes/app", "parentId": "root", "path": "app", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": true, "module": "/assets/app-40h9grwG.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/AppProxyProvider-CSPIe7t3.js", "/assets/context-DkLB1Z2_.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.preset-donation_.delete.$id": { "id": "routes/app.preset-donation_.delete.$id", "parentId": "routes/app", "path": "preset-donation/delete/:id", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": false, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": false, "hasErrorBoundary": false, "module": "/assets/app.preset-donation_.delete._id-l0sNRNKZ.js", "imports": [], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.preset-donation_.edit.$id": { "id": "routes/app.preset-donation_.edit.$id", "parentId": "routes/app", "path": "preset-donation/edit/:id", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.preset-donation_.edit._id-Cm8neKpN.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/AddCampaign-BnSGFgtp.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.recurring-subscriptions": { "id": "routes/app.recurring-subscriptions", "parentId": "routes/app", "path": "recurring-subscriptions", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.recurring-subscriptions-BSBprR3v.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/useAppBridge-Bj34gXAL.js", "/assets/context-DkLB1Z2_.js", "/assets/BlockStack-BQsk5ghl.js", "/assets/index-C8UdS5-V.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.preset-donation_.add": { "id": "routes/app.preset-donation_.add", "parentId": "routes/app", "path": "preset-donation/add", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.preset-donation_.add-D9x6-Nyw.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/AddCampaign-BnSGFgtp.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.donation-activity": { "id": "routes/app.donation-activity", "parentId": "routes/app", "path": "donation-activity", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.donation-activity-w-8NQ49U.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/features-D7zFNnvn.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.perset-donation": { "id": "routes/app.perset-donation", "parentId": "routes/app", "path": "perset-donation", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.perset-donation-DMCJVfed.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.preset-donation": { "id": "routes/app.preset-donation", "parentId": "routes/app", "path": "preset-donation", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.preset-donation-BbFFV4cd.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/ConfigurationTab-uPFD0stB.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.email-settings": { "id": "routes/app.email-settings", "parentId": "routes/app", "path": "email-settings", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.email-settings-DihqQt6-.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/features-D7zFNnvn.js", "/assets/RichTextEditor-euPN7XAi.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.track-donation": { "id": "routes/app.track-donation", "parentId": "routes/app", "path": "track-donation", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.track-donation-C7tuclun.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.pos-donation": { "id": "routes/app.pos-donation", "parentId": "routes/app", "path": "pos-donation", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.pos-donation-CruUwz7J.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/RichTextEditor-euPN7XAi.js", "/assets/features-D7zFNnvn.js", "/assets/ConfigurationTab-uPFD0stB.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.billing": { "id": "routes/app.billing", "parentId": "routes/app", "path": "billing", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.billing-B_2PUpXr.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.pricing": { "id": "routes/app.pricing", "parentId": "routes/app", "path": "pricing", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.pricing-0xR2L-Xd.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/features-D7zFNnvn.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.roundup": { "id": "routes/app.roundup", "parentId": "routes/app", "path": "roundup", "index": void 0, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.roundup-CntNnkR1.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/ConfigurationTab-uPFD0stB.js", "/assets/BlockStack-BQsk5ghl.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app._index": { "id": "routes/app._index", "parentId": "routes/app", "path": void 0, "index": true, "caseSensitive": void 0, "hasAction": true, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app._index-CNI1I9-R.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js", "/assets/useAppBridge-Bj34gXAL.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 }, "routes/app.help": { "id": "routes/app.help", "parentId": "routes/app", "path": "help", "index": void 0, "caseSensitive": void 0, "hasAction": false, "hasLoader": true, "hasClientAction": false, "hasClientLoader": false, "hasClientMiddleware": false, "hasDefaultExport": true, "hasErrorBoundary": false, "module": "/assets/app.help-B6qucMPo.js", "imports": ["/assets/chunk-UVKPFVEO-CEw7IaX3.js", "/assets/jsx-runtime-lA1hjGOj.js"], "css": [], "clientActionModule": void 0, "clientLoaderModule": void 0, "clientMiddlewareModule": void 0, "hydrateFallbackModule": void 0 } }, "url": "/assets/manifest-f84fcd80.js", "version": "f84fcd80", "sri": void 0 };
 const assetsBuildDirectory = "build/client";
 const basename = "/";
 const future = { "unstable_optimizeDeps": false, "unstable_passThroughRequests": false, "unstable_subResourceIntegrity": false, "unstable_trailingSlashAwareDataRequests": false, "unstable_previewServerPrerendering": false, "v8_middleware": false, "v8_splitRouteModules": false, "v8_viteEnvironmentApi": false };

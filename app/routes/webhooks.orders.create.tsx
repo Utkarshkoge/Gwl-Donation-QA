@@ -299,12 +299,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     if (effectiveSettings.donationBasis === 'product') {
                         for (const lineItem of (order.line_items || [])) {
                             const itemPriceCents = parseFloat(lineItem.price || 0) * 100;
+                            const quantity = lineItem.quantity || 1;
                             if (itemPriceCents >= minValCents) {
                                 isApplicable = true;
                                 isPosDonationSource = true;
-                                samplePriceCents = itemPriceCents;
-                                donationAmtCents = effectiveSettings.donationType === "percentage" ? (effectiveSettings.donationValue / 100) * samplePriceCents : effectiveSettings.donationValue * 100;
-                                break;
+                                const lineTotalCents = itemPriceCents * quantity;
+                                samplePriceCents += lineTotalCents;
+                                donationAmtCents += effectiveSettings.donationType === "percentage"
+                                    ? (effectiveSettings.donationValue / 100) * lineTotalCents
+                                    : effectiveSettings.donationValue * 100 * quantity;
                             }
                         }
                     } else if (totalCents >= minValCents) {
@@ -465,53 +468,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         },
                     });
                 } else if (hasDirectDonationProduct && frequency === "one_time") {
-                    // ── Unified Model Fix: One-time global donations are now Preset ──
-                    // Find or create a 'General Donation' campaign to house these
-                    let globalCampaign = await db.campaign.findFirst({
-                        where: { shop, name: "General Donation" }
-                    });
-
-                    if (!globalCampaign) {
-                        globalCampaign = await db.campaign.create({
-                            data: {
-                                shop,
-                                name: "General Donation",
-                                description: "Global one-time donations from the widget",
-                                enabled: true,
-                            }
-                        });
-                    }
-
-                    // Get the variant ID for the global product item
-                    const donationItem = (order.line_items || []).find((li: any) => String(li.product_id) === String(DONATION_PRODUCT_ID));
-                    const variantIdStr = donationItem?.variant_id?.toString() || "global";
-
-                    await db.donation.upsert({
-                        where: {
-                            orderId_shopifyVariantId: {
-                                orderId: orderId,
-                                shopifyVariantId: variantIdStr,
-                            }
-                        },
-                        create: {
-                            campaignId: globalCampaign.id,
-                            orderId: orderId,
-                            orderNumber: order.name,
-                            amount: parseFloat(donationAmtFormatted),
-                            currency: currency,
-                            donorName: currentCustomerName,
-                            donorEmail: currentCustomerEmail,
-                            shopifyProductId: DONATION_PRODUCT_ID,
-                            shopifyVariantId: variantIdStr,
-                            createdAt: createdAt,
-                        },
-                        update: {
-                            amount: parseFloat(donationAmtFormatted),
-                            orderNumber: order.name,
-                        }
-                    });
-                    console.log(`[Webhook] One-time global donation logged to Donation table (Unified Model).`);
-                    hasCampaignDonation = true; // For tagging logic below
+                    // ── One-time = Preset: No separate handling needed ──
+                    // One-time donations through the global product are treated as preset.
+                    // Tracked via order tags and note attributes only.
+                    hasCampaignDonation = true;
+                    console.log(`[Webhook] One-time global donation treated as Preset (no General Donation campaign).`);
                 } else if (hasRoundUpDonation) {
                     // ── Fix: Roundup donations go to their own dedicated table ──
                     await db.roundUpDonationLog.upsert({
