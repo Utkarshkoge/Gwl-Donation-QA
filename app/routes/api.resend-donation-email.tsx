@@ -243,7 +243,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 );
                 const detailData = await detailResponse.json();
                 const lineItems = detailData.data?.order?.lineItems?.edges?.map((e: any) => e.node) || [];
-                
+
                 // Try to find global donation product first
                 let donationItem = lineItems.find((li: any) => li.variant?.product?.id?.includes(donationProductId));
 
