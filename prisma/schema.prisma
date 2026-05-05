@@ -76,6 +76,8 @@ model Donation {
   shopifyVariantId String?
   status           String   @default("active")
   createdAt        DateTime @default(now())
+  isResent         Boolean  @default(false)
+  receiptStatus    String   @default("pending")
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([orderId, shopifyVariantId])

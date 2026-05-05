@@ -217,27 +217,29 @@
               minVal = 0;
           }
 
-          // First try to calculate from cart, if items exist
-          fetch('/cart.js')
-            .then(res => res.json())
-            .then(cart => {
-              var isApplicable = false;
-              var totalValCents = 0;
-              var donationAmtCents = 0;
+          // Fetch current cart to ensure accuracy
+          fetch('/cart.js?t=' + new Date().getTime(), { cache: 'no-store' }).then(res => res.json()).then(cart => {
+                var donationAmtCents = 0;
+                var isApplicable = false;
+                var totalValCents = cart.total_price || 0;
+                var minVal = baseSettings.minimumValue || 0;
+                
+                console.log("[POS Donation] Cart Data:", cart);
+                console.log("[POS Donation] Settings:", baseSettings);
 
-              if (baseSettings.donationBasis === 'product') {
-                if (cart.item_count > 0) {
-                  cart.items.forEach(item => {
-                    if (item.line_price / 100.0 >= minVal) {
-                      isApplicable = true;
-                      totalValCents += item.line_price;
-                      if (baseSettings.donationType === "percentage") {
-                        donationAmtCents += (baseSettings.donationValue / 100) * item.line_price;
-                      } else {
-                        donationAmtCents += baseSettings.donationValue * 100 * item.quantity;
-                      }
-                    }
-                  });
+                if (cart.items && cart.items.length > 0) {
+                    cart.items.forEach(function(item) {
+                        if (item.line_price / 100.0 >= minVal) {
+                            isApplicable = true;
+                            if (baseSettings.donationType === "percentage") {
+                                donationAmtCents += item.line_price * (baseSettings.donationValue / 100.0);
+                            } else {
+                                var lineDonation = baseSettings.donationValue * 100 * item.quantity;
+                                console.log("[POS Donation] Line Item:", item.title, "Qty:", item.quantity, "Donation:", lineDonation);
+                                donationAmtCents += lineDonation;
+                            }
+                        }
+                    });
                 } else if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
                   // On product page with empty cart, show potential donation
                   var qty = 1;

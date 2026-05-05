@@ -146,7 +146,8 @@ export default function DonationActivity() {
             orderTotal: 0,
             currency: d.currency,
             status: d.status || "active",
-            receiptStatus: "sent",
+            receiptStatus: d.receiptStatus || "sent",
+            isResent: d.isResent || false,
             visualType: "Preset",
             source: "preset"
         }))

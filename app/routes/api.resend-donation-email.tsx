@@ -308,6 +308,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         where: { id: logId },
                         data: { receiptStatus: "sent", receiptSentAt: new Date(), isResent: true } as any
                     });
+                } else if (logType === 'preset' && presetDonation) {
+                    await prisma.donation.update({
+                        where: { id: logId },
+                        data: { receiptStatus: "sent", isResent: true }
+                    });
                 }
                 return data({ success: true });
             } else {
