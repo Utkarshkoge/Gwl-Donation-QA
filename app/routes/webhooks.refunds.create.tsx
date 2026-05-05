@@ -23,64 +23,48 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const orderIdStr = `gid://shopify/Order/${refund.order_id}`;
 
     try {
-        let existingLog = await (db as any).posDonationLog.findUnique({
-            where: { orderId: orderIdStr },
-        });
-        let logType: 'pos' | 'recurring' | 'roundup' = 'pos';
+        // ── Check all possible donation tables ──
+        let donationFound = false;
+        let refundAmount = 0;
+        let refundFreq = "Donation";
 
-        if (!existingLog) {
-            existingLog = await (db as any).recurringDonationLog.findFirst({
-                where: { orderId: orderIdStr, shop: shop },
-            });
-            if (existingLog) logType = 'recurring';
+        // 1. POS Logs
+        const posLog = await db.posDonationLog.findFirst({ where: { orderId: orderIdStr } });
+        if (posLog) {
+            await db.posDonationLog.update({ where: { orderId: orderIdStr }, data: { status: "refunded" } });
+            donationFound = true;
+            refundAmount = posLog.donationAmount;
+            refundFreq = "POS";
         }
 
-        if (!existingLog) {
-            existingLog = await (db as any).roundUpDonationLog.findFirst({
-                where: { orderId: orderIdStr, shop: shop },
-            });
-            if (existingLog) logType = 'roundup';
+        // 2. Recurring Logs (Subscriptions only now)
+        const recLog = await db.recurringDonationLog.findFirst({ where: { orderId: orderIdStr } });
+        if (recLog) {
+            await db.recurringDonationLog.update({ where: { orderId: orderIdStr }, data: { status: "refunded" } });
+            donationFound = true;
+            refundAmount = recLog.donationAmount;
+            refundFreq = recLog.frequency === "weekly" ? "Weekly" : "Monthly";
         }
 
-        if (existingLog) {
-            if (logType === 'pos') {
-                await (db as any).posDonationLog.update({
-                    where: { orderId: orderIdStr },
-                    data: { status: "refunded" },
-                });
-            } else {
-                await (db as any).recurringDonationLog.update({
-                    where: { orderId: orderIdStr },
-                    data: { status: "refunded" },
-                });
-            }
+        // 3. Round-Up Logs
+        const roundLog = await db.roundUpDonationLog.findFirst({ where: { orderId: orderIdStr } });
+        if (roundLog) {
+            await db.roundUpDonationLog.update({ where: { orderId: orderIdStr }, data: { status: "refunded" } });
+            donationFound = true;
+            refundAmount = roundLog.donationAmount;
+            refundFreq = "Round-Up";
         }
 
-        // Also check for Preset Donations (db.donation)
-        const presetDonations = await db.donation.findMany({
-            where: { orderId: refund.order_id.toString() }
-        });
-        if (presetDonations.length > 0) {
-            await db.donation.updateMany({
-                where: { orderId: refund.order_id.toString() },
-                data: { status: "refunded" }
-            });
-            console.log(`[Webhook] Refunded ${presetDonations.length} preset donation(s) for order ${refund.order_id}`);
+        // 4. Preset / One-Time Global (Unified)
+        const presetLogs = await db.donation.findMany({ where: { orderId: refund.order_id.toString() } });
+        if (presetLogs.length > 0) {
+            await db.donation.updateMany({ where: { orderId: refund.order_id.toString() }, data: { status: "refunded" } });
+            donationFound = true;
+            refundAmount = presetLogs.reduce((sum, d) => sum + d.amount, 0);
+            refundFreq = "Preset";
         }
 
-        // Also check for Round-Up Donations
-        const roundupDonations = await db.roundUpDonationLog.findMany({
-            where: { orderId: refund.order_id.toString() }
-        });
-        if (roundupDonations.length > 0) {
-            await db.roundUpDonationLog.updateMany({
-                where: { orderId: refund.order_id.toString() },
-                data: { status: "refunded" }
-            });
-            console.log(`[Webhook] Refunded ${roundupDonations.length} round-up donation(s) for order ${refund.order_id}`);
-        }
-
-        if (existingLog || presetDonations.length > 0 || roundupDonations.length > 0) {
+        if (donationFound) {
             if (admin) {
                 // We need to fetch the order details first to get email/name
                 const orderResponse = await admin.graphql(
@@ -103,23 +87,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 const orderData = await orderResponse.json();
                 const order = orderData.data?.order;
 
-                if (order && order.email && existingLog) {
+                if (order && order.email) {
                     const customerName = order.billingAddress ? `${order.billingAddress.firstName || ""} ${order.billingAddress.lastName || ""}`.trim() : "";
                     try {
                         if (checkFeatureAccess(plan, "canSendRefundEmail")) {
-                            const freqLabel = logType === 'recurring'
-                            ? (existingLog.frequency === "weekly" ? "Weekly" : existingLog.frequency === "monthly" ? "Monthly" : "One-time")
-                            : (logType === 'roundup' ? "Round-Up" : "Donation");
-
                             await sendDonationReceipt({
                                 email: order.email,
                                 name: customerName,
-                                amount: existingLog.donationAmount.toFixed(2),
+                                amount: refundAmount.toFixed(2),
                                 orderNumber: order.name,
                                 type: "refund",
                                 shop,
-                                frequency: freqLabel
+                                frequency: refundFreq
                             });
+                        } else {
+                            console.log(`[Webhook] Refund email skipped for ${shop} - Plan restriction: ${plan}`);
+                        }
                         } else {
                             console.log(`[Webhook] Refund email skipped for ${shop} - Plan restriction: ${plan}`);
                         }

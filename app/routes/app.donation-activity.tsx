@@ -98,7 +98,7 @@ export default function DonationActivity() {
     const getFrequencyLabel = (freq: string | null) => {
         if (freq === "monthly") return "Monthly";
         if (freq === "weekly") return "Weekly";
-        if (freq === "one_time") return "One-time";
+        if (freq === "one_time") return "Preset";
         return "Donation";
     };
 
@@ -129,7 +129,7 @@ export default function DonationActivity() {
             donationAmount: d.amount,
             orderTotal: 0,
             currency: d.currency,
-            status: "active",
+            status: d.status || "active",
             receiptStatus: "sent",
             visualType: "Preset",
             source: "preset"
@@ -141,11 +141,13 @@ export default function DonationActivity() {
     } else if (selectedTab === "pos") {
         filteredLogs = normalizedLogs.filter(l => l.source === "pos");
     } else if (selectedTab === "recurring") {
-        filteredLogs = normalizedLogs.filter(l => l.source === "recurring");
+        // Only show actual subscriptions (Monthly/Weekly)
+        filteredLogs = normalizedLogs.filter(l => l.source === "recurring" && l.frequency !== "one_time");
     } else if (selectedTab === "roundup") {
         filteredLogs = normalizedLogs.filter(l => l.source === "roundup");
     } else if (selectedTab === "preset") {
-        filteredLogs = normalizedLogs.filter(l => l.source === "preset");
+        // Includes both original Preset and the new Unified One-time global donations
+        filteredLogs = normalizedLogs.filter(l => l.source === "preset" || (l.source === "recurring" && l.frequency === "one_time"));
     }
 
     const totalPages = Math.ceil(filteredLogs.length / pageSize);
@@ -159,10 +161,10 @@ export default function DonationActivity() {
                     <div className="polaris-tabs-list" role="tablist">
                         {[
                             { id: "all", label: "All" },
-                            { id: "pos", label: "POS Donation" },
-                            { id: "recurring", label: "Recurring" },
-                            { id: "roundup", label: "Round Up Donation" },
                             { id: "preset", label: "Preset Donation" },
+                            { id: "recurring", label: "Recurring" },
+                            { id: "roundup", label: "Round Up" },
+                            { id: "pos", label: "POS" },
                         ].map((tab) => {
                             const isSelected = selectedTab === tab.id;
                             const hasAccess = tab.id === "all" || tab.id === "pos" || tab.id === "recurring" || checkFeatureAccess(plan, "canUseFilters");
@@ -281,13 +283,11 @@ export default function DonationActivity() {
                                                     borderRadius: "10px",
                                                     fontSize: "11px",
                                                     color: (log.visualType === "Monthly" || log.visualType === "Weekly") ? "#6C4A79" :
-                                                        (log.visualType === "One-time" ? "#2B6CB0" :
-                                                            (log.visualType === "Preset" ? "#008060" :
-                                                                (log.visualType === "Round Up" ? "#965b00" : "#03080eff"))),
+                                                        (log.visualType === "Preset" ? "#008060" :
+                                                            (log.visualType === "Round Up" ? "#965b00" : "#03080eff")),
                                                     background: (log.visualType === "Monthly" || log.visualType === "Weekly") ? "#f4ebf8" :
-                                                        (log.visualType === "One-time" ? "#EBF8FF" :
-                                                            (log.visualType === "Preset" ? "#e6fff1" :
-                                                                (log.visualType === "Round Up" ? "#fff4e5" : "#e4f0f6")))
+                                                        (log.visualType === "Preset" ? "#e6fff1" :
+                                                            (log.visualType === "Round Up" ? "#fff4e5" : "#e4f0f6"))
                                                 }}>
                                                     {log.visualType || "POS"}
                                                 </span>

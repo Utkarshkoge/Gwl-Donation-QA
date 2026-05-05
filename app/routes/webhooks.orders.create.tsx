@@ -441,7 +441,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
 
             try {
-                if (hasDirectDonationProduct) {
+                if (hasDirectDonationProduct && frequency !== "one_time") {
+                    // Only log actual Monthly/Weekly subscriptions to RecurringDonationLog
                     await db.recurringDonationLog.upsert({
                         where: { orderId: orderIdStr },
                         update: {
@@ -463,6 +464,54 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             type: "recurring",
                         },
                     });
+                } else if (hasDirectDonationProduct && frequency === "one_time") {
+                    // ── Unified Model Fix: One-time global donations are now Preset ──
+                    // Find or create a 'General Donation' campaign to house these
+                    let globalCampaign = await db.campaign.findFirst({
+                        where: { shop, name: "General Donation" }
+                    });
+
+                    if (!globalCampaign) {
+                        globalCampaign = await db.campaign.create({
+                            data: {
+                                shop,
+                                name: "General Donation",
+                                description: "Global one-time donations from the widget",
+                                enabled: true,
+                            }
+                        });
+                    }
+
+                    // Get the variant ID for the global product item
+                    const donationItem = (order.line_items || []).find((li: any) => String(li.product_id) === String(DONATION_PRODUCT_ID));
+                    const variantIdStr = donationItem?.variant_id?.toString() || "global";
+
+                    await db.donation.upsert({
+                        where: {
+                            orderId_shopifyVariantId: {
+                                orderId: orderId,
+                                shopifyVariantId: variantIdStr,
+                            }
+                        },
+                        create: {
+                            campaignId: globalCampaign.id,
+                            orderId: orderId,
+                            orderNumber: order.name,
+                            amount: parseFloat(donationAmtFormatted),
+                            currency: currency,
+                            donorName: currentCustomerName,
+                            donorEmail: currentCustomerEmail,
+                            shopifyProductId: DONATION_PRODUCT_ID,
+                            shopifyVariantId: variantIdStr,
+                            createdAt: createdAt,
+                        },
+                        update: {
+                            amount: parseFloat(donationAmtFormatted),
+                            orderNumber: order.name,
+                        }
+                    });
+                    console.log(`[Webhook] One-time global donation logged to Donation table (Unified Model).`);
+                    hasCampaignDonation = true; // For tagging logic below
                 } else if (hasRoundUpDonation) {
                     // ── Fix: Roundup donations go to their own dedicated table ──
                     await db.roundUpDonationLog.upsert({
@@ -519,8 +568,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     const existingTags = order.tags ? order.tags.split(',').map((t: any) => t.trim()) : [];
 
                     if (hasDirectDonationProduct) {
-                        const orderTag = frequency === "one_time" ? "preset_donation" : frequency === "monthly" ? "recurring_donation_monthly" : "recurring_donation_weekly";
-                        const customerTag = frequency === "one_time" ? "preset_donor" : frequency === "monthly" ? "recurring_donor_monthly" : "recurring_donor_weekly";
+                        // For global widget items
+                        const isSub = frequency !== "one_time";
+                        const orderTag = isSub ? (frequency === "monthly" ? "recurring_donation_monthly" : "recurring_donation_weekly") : "preset_donation";
+                        const customerTag = isSub ? (frequency === "monthly" ? "recurring_donor_monthly" : "recurring_donor_weekly") : "preset_donor";
 
                         if (!existingTags.includes(orderTag)) existingTags.push(orderTag);
 
@@ -563,12 +614,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     let donationTypeLabel = "Donation Type";
                     let typeValue = "POS";
                     
-                    if (hasDirectDonationProduct) {
-                        typeValue = frequency === "one_time" ? "One-time" : (frequency === "monthly" ? "Monthly" : "Weekly");
+                    if (hasCampaignDonation || (hasDirectDonationProduct && frequency === "one_time")) {
+                        typeValue = "Preset";
+                    } else if (hasDirectDonationProduct) {
+                        typeValue = frequency === "monthly" ? "Monthly" : "Weekly";
                     } else if (hasRoundUpDonation) {
                         typeValue = "Round-Up";
-                    } else if (hasCampaignDonation) {
-                        typeValue = "Preset";
                     }
 
                     // Remove existing if any to ensure fresh values

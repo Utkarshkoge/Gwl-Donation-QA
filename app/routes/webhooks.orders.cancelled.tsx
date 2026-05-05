@@ -20,83 +20,68 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const plan = subscription?.plan || "basic";
 
     try {
-        let existingLog = await (db as any).posDonationLog.findUnique({
-            where: { orderId: orderIdStr },
-        });
-        let logType: 'pos' | 'recurring' | 'roundup' = 'pos';
+        // ── Check all possible donation tables ──
+        let donationFound = false;
+        let cancelAmount = 0;
+        let cancelFreq = "Donation";
+        let cancelOrderNumber = order.name || "";
 
-        if (!existingLog) {
-            existingLog = await (db as any).recurringDonationLog.findFirst({
-                where: { orderId: orderIdStr, shop: shop },
-            });
-            if (existingLog) logType = 'recurring';
+        // 1. POS Logs
+        const posLog = await db.posDonationLog.findFirst({ where: { orderId: orderIdStr } });
+        if (posLog) {
+            await db.posDonationLog.update({ where: { orderId: orderIdStr }, data: { status: "cancelled" } });
+            donationFound = true;
+            cancelAmount = posLog.donationAmount;
+            cancelFreq = "POS";
+            cancelOrderNumber = posLog.orderNumber || cancelOrderNumber;
         }
 
-        if (!existingLog) {
-            existingLog = await (db as any).roundUpDonationLog.findFirst({
-                where: { orderId: orderIdStr, shop: shop },
-            });
-            if (existingLog) logType = 'roundup';
+        // 2. Recurring Logs (Subscriptions only now)
+        const recLog = await db.recurringDonationLog.findFirst({ where: { orderId: orderIdStr } });
+        if (recLog) {
+            await db.recurringDonationLog.update({ where: { orderId: orderIdStr }, data: { status: "cancelled" } });
+            donationFound = true;
+            cancelAmount = recLog.donationAmount;
+            cancelFreq = recLog.frequency === "weekly" ? "Weekly" : "Monthly";
+            cancelOrderNumber = recLog.orderNumber || cancelOrderNumber;
         }
 
-        if (existingLog) {
-            if (logType === 'pos') {
-                await (db as any).posDonationLog.update({
-                    where: { orderId: orderIdStr },
-                    data: { status: "cancelled" },
-                });
-            } else {
-                await (db as any).recurringDonationLog.update({
-                    where: { orderId: orderIdStr },
-                    data: { status: "cancelled" },
-                });
-            }
+        // 3. Round-Up Logs
+        const roundLog = await db.roundUpDonationLog.findFirst({ where: { orderId: orderIdStr } });
+        if (roundLog) {
+            await db.roundUpDonationLog.update({ where: { orderId: orderIdStr }, data: { status: "cancelled" } });
+            donationFound = true;
+            cancelAmount = roundLog.donationAmount;
+            cancelFreq = "Round-Up";
+            cancelOrderNumber = roundLog.orderNumber || cancelOrderNumber;
         }
 
-        // Also check for Preset Donations (db.donation)
-        const presetDonations = await db.donation.findMany({
-            where: { orderId: order.id.toString() }
-        });
-        if (presetDonations.length > 0) {
-            await db.donation.updateMany({
-                where: { orderId: order.id.toString() },
-                data: { status: "cancelled" }
-            });
-            console.log(`[Webhook] Cancelled ${presetDonations.length} preset donation(s) for order ${order.id}`);
+        // 4. Preset / One-Time Global (Unified)
+        const presetLogs = await db.donation.findMany({ where: { orderId: order.id.toString() } });
+        if (presetLogs.length > 0) {
+            await db.donation.updateMany({ where: { orderId: order.id.toString() }, data: { status: "cancelled" } });
+            donationFound = true;
+            cancelAmount = presetLogs.reduce((sum, d) => sum + d.amount, 0);
+            cancelFreq = "Preset";
+            cancelOrderNumber = presetLogs[0].orderNumber || cancelOrderNumber;
         }
 
-        // Also check for Round-Up Donations
-        const roundupDonations = await db.roundUpDonationLog.findMany({
-            where: { orderId: order.id.toString() }
-        });
-        if (roundupDonations.length > 0) {
-            await db.roundUpDonationLog.updateMany({
-                where: { orderId: order.id.toString() },
-                data: { status: "cancelled" }
-            });
-            console.log(`[Webhook] Cancelled ${roundupDonations.length} round-up donation(s) for order ${order.id}`);
-        }
-
-        if (existingLog || presetDonations.length > 0 || roundupDonations.length > 0) {
+        if (donationFound) {
             // Trigger Cancellation Email
             try {
                 const customerEmail = order.email || order.contact_email || order.customer?.email;
                 const customerName = order.customer ? `${order.customer.first_name || ""} ${order.customer.last_name || ""}`.trim() : (order.billing_address?.name || "");
 
-                if (customerEmail && existingLog) {
+                if (customerEmail) {
                     if (checkFeatureAccess(plan, "canSendCancelEmail")) {
-                        const freqLabel = logType === 'recurring'
-                            ? (existingLog.frequency === "weekly" ? "Weekly" : existingLog.frequency === "monthly" ? "Monthly" : "One-time")
-                            : (logType === 'roundup' ? "Round-Up" : "Donation");
-
                         await sendDonationReceipt({
                             email: customerEmail,
                             name: customerName,
-                            amount: existingLog.donationAmount.toFixed(2),
-                            orderNumber: existingLog.orderNumber || "",
+                            amount: cancelAmount.toFixed(2),
+                            orderNumber: cancelOrderNumber,
                             type: "cancellation",
                             shop,
-                            frequency: freqLabel
+                            frequency: cancelFreq
                         });
                     } else {
                         console.log(`[Webhook] Cancellation email skipped for ${shop} - Plan restriction: ${plan}`);

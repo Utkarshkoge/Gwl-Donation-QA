@@ -117,7 +117,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             const rawRecurring = await prisma.recurringDonationLog.findMany({ 
                 where: { 
                     shop,
-                    status: "active"
+                    status: "active",
+                    frequency: { in: ["monthly", "weekly"] }
                 } 
             });
             const filteredRecurring = rawRecurring.filter((l: any) => {
@@ -271,10 +272,10 @@ export default function TrackDonationPage() {
                                 style={{ width: "100%", padding: "8px", borderRadius: "8px", border: "1px solid #e1e3e5" }}
                             >
                                 <option value="all">All Donations</option>
-                                <option value="preset">Preset Donations</option>
-                                <option value="pos">POS Donations</option>
-                                <option value="roundup">Round Up Donations</option>
-                                <option value="recurring">Recurring Donations</option>
+                                <option value="preset">Preset Donation</option>
+                                <option value="recurring">Recurring (Subscriptions)</option>
+                                <option value="roundup">Round Up</option>
+                                <option value="pos">POS</option>
                             </select>
                         </div>
 

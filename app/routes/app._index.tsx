@@ -108,17 +108,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .filter(l => new Date(l.createdAt) >= last7DaysDate)
     .reduce((acc, l) => acc + (l.donationAmount || 0), 0);
 
-  // Recurring Stats
-  const allRecurringLogs = recurringLogs as any[];
+  // Recurring Stats (Subscriptions only)
+  const allRecurringLogs = (recurringLogs as any[]).filter(l => l.frequency !== "one_time");
   const totalRecurring = allRecurringLogs.reduce((acc, l) => acc + (l.donationAmount || 0), 0);
   const last7DaysRecurring = allRecurringLogs
     .filter(l => new Date(l.createdAt) >= last7DaysDate)
     .reduce((acc, l) => acc + (l.donationAmount || 0), 0);
 
-  const totalPreset = presetStats._sum.amount || 0;
-  const totalImpact = totalPreset + totalPos + totalRoundup + totalRecurring;
+  // Legacy/Unified One-time stats from RecurringDonationLog (for data consistency during transition)
+  const legacyOneTimeStats = (recurringLogs as any[])
+    .filter(l => l.frequency === "one_time")
+    .reduce((acc, l) => acc + (l.donationAmount || 0), 0);
+  
+  const legacyOneTime7Days = (recurringLogs as any[])
+    .filter(l => l.frequency === "one_time" && new Date(l.createdAt) >= last7DaysDate)
+    .reduce((acc, l) => acc + (l.donationAmount || 0), 0);
 
-  const last7DaysPreset = presetLast7Days._sum.amount || 0;
+  const totalPreset = (presetStats._sum.amount || 0) + legacyOneTimeStats;
+  const last7DaysPreset = (presetLast7Days._sum.amount || 0) + legacyOneTime7Days;
+  const totalImpact = totalPreset + totalPos + totalRoundup + totalRecurring;
   const totalLast7Days = last7DaysPreset + last7DaysPos + last7DaysRoundup + last7DaysRecurring;
 
   // Count active channels
@@ -459,7 +467,7 @@ export default function Index() {
                   <svg viewBox="0 0 20 20" style={{ width: '22px', fill: '#008060' }}><path d="M10 18.25a.75.75 0 0 1-.53-.22l-6.8-6.73a4.52 4.52 0 0 1 0-6.4 4.5 4.5 0 0 1 6.36 0L10 5.86l.97-.96a4.5 4.5 0 0 1 6.36 0 4.52 4.52 0 0 1 0 6.4l-6.8 6.73a.75.75 0 0 1-.53.22Z" /></svg>
                 </div>
                 <s-stack gap="base">
-                  <s-text type="strong">One-Time Donations</s-text>
+                  <s-text type="strong">Preset Donations</s-text>
                   <s-text color="subdued">Customers choose fixed amounts from your predefined list.</s-text>
                 </s-stack>
                 <div style={{ marginTop: '12px' }}>
