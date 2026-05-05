@@ -341,7 +341,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return data({ success: false, error: error.message || "An unexpected error occurred while resending the email" }, { status: 500 });
         }
     } else {
-    } else {
         return data({ success: false, error: "Missing logId or donationId" }, { status: 400 });
     }
 };
