@@ -234,6 +234,7 @@
                         cart.items.forEach(function(item) {
                             if (item.line_price / 100.0 >= minVal) {
                                 isApplicable = true;
+                                totalValCents += item.line_price;
                                 if (baseSettings.donationType === "percentage" || baseSettings.donationType === "Percentage") {
                                     donationAmtCents += item.line_price * (baseSettings.donationValue / 100.0);
                                 } else {

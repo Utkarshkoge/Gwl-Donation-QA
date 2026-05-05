@@ -34,6 +34,27 @@
       "donation-cart-block__feedback" + (isError ? " error" : "");
   }
 
+  /**
+   * Check if a cart item is a donation line item (not a real product).
+   */
+  function isDonationLineItem(item) {
+    return (
+      item.properties &&
+      (item.properties["Donation Campaign"] ||
+        item.properties["_donation"] === "true")
+    );
+  }
+
+  /**
+   * Returns true if the cart has at least one real (non-donation) item.
+   */
+  function hasRealCartItems(cart) {
+    if (!cart || !cart.items || cart.items.length === 0) return false;
+    return cart.items.some(function (item) {
+      return !isDonationLineItem(item);
+    });
+  }
+
   /* ─── Shopify Cart API helpers ───────────────────────────────────────────── */
 
   async function getCart() {
@@ -211,13 +232,32 @@
     );
   }
 
-  /* ─── Fetch campaigns ─────────────────────────────────────────────────────── */
+  /* ─── Fetch campaigns (with retry) ───────────────────────────────────────── */
 
-  async function fetchCampaigns(apiUrl) {
-    const r = await fetch(apiUrl, { headers: { Accept: "application/json" } });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const json = await r.json();
-    return json.campaigns || [];
+  async function fetchCampaignsWithRetry(apiUrl, maxRetries) {
+    const retries = maxRetries || 2;
+    const delays = [1000, 2000, 3000];
+    let lastError;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) {
+        await new Promise(function (res) {
+          setTimeout(res, delays[attempt - 1] || 2000);
+        });
+      }
+
+      try {
+        const r = await fetch(apiUrl, { headers: { Accept: "application/json" } });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const json = await r.json();
+        return json.campaigns || [];
+      } catch (err) {
+        lastError = err;
+        console.warn("[DonationCart] Campaign fetch attempt " + (attempt + 1) + " failed:", err.message);
+      }
+    }
+
+    throw lastError;
   }
 
   /* ─── Render ─────────────────────────────────────────────────────────────── */
@@ -265,8 +305,8 @@
         cart = await getCart();
         donationLine = findDonationLine(cart, numericVariantIds);
 
-        // Hide if cart empty
-        if (!cart || !cart.items || cart.items.length === 0) {
+        // Hide if cart has no real (non-donation) items
+        if (!hasRealCartItems(cart)) {
           container.style.display = "none";
           return;
         }
@@ -531,13 +571,22 @@
       const apiUrl = resolveApiUrl(container);
 
       try {
-        const campaigns = await fetchCampaigns(apiUrl);
+        // Early empty-cart check: hide immediately if no real items in cart
+        const cart = await getCart();
+        if (!hasRealCartItems(cart)) {
+          container.style.display = "none";
+          if (loadingEl) loadingEl.style.display = "none";
+          continue;
+        }
+
+        const campaigns = await fetchCampaignsWithRetry(apiUrl, 2);
         if (loadingEl) loadingEl.style.display = "none";
         await renderWidget(container, campaigns);
       } catch (err) {
-        console.error("[DonationCartBlock] Error:", err);
+        console.error("[DonationCartBlock] Error after retries:", err);
+        // Gracefully hide the block instead of showing a scary error
         if (loadingEl) loadingEl.style.display = "none";
-        if (errorEl) errorEl.style.display = "";
+        container.style.display = "none";
       }
     }
   }
