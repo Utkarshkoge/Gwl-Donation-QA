@@ -28,7 +28,7 @@
   {% endif %}
 
   {% comment %} If we are in the cart or have items, override with cart total if it makes sense {% endcomment %}
-  {% if request.page_type == 'cart' and cart.item_count > 0 %}
+  {% if cart.item_count > 0 %}
     {% assign cart_applicable = false %}
     {% assign cart_total_val = 0 %}
     {% assign cart_donation_total = 0 %}
@@ -195,8 +195,6 @@
         var contentEl = document.getElementById("pos-donation-content-{{ block.id }}");
         var baseSettings = {{ app.metafields.pos_donation.settings.value | json }};
         if (!baseSettings) return;
-        var pageType = {{ request.page_type | json }};
-        var currentQty = 1;
 
         if (baseSettings.enabled) {
           fetch('/cart/update.js', {
@@ -232,8 +230,34 @@
               console.log("[POS Donation] Settings:", baseSettings);
 
               if (baseSettings.donationBasis === 'product' || baseSettings.donationBasis === 'Product') {
-                    if (pageType === 'cart' && cart.items && cart.items.length > 0) {
+                    // Detect if we're on a product page vs cart page
+                    var isCartPage = (window.location.pathname === '/cart') 
+                                  || (document.querySelector('form[action="/cart"], .cart__contents, .cart-template') !== null);
+                    var isProductPage = !isCartPage && (
+                      (document.querySelector('[data-product-id], form[action*="/cart/add"], .product-form, .product-single') !== null)
+                      || (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product)
+                      || (window.meta && window.meta.product)
+                    );
+
+                    // Determine the current product's ID on product pages (to avoid double-counting from cart)
+                    var currentProductId = null;
+                    if (isProductPage) {
+                      if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
+                        currentProductId = window.ShopifyAnalytics.meta.product.id;
+                      } else if (window.meta && window.meta.product) {
+                        currentProductId = window.meta.product.id;
+                      }
+                    }
+
+                    // Step 1: Calculate donation from existing cart items
+                    // On product pages, skip the currently-viewed product to avoid double-counting
+                    if (cart.items && cart.items.length > 0) {
                         cart.items.forEach(function(item) {
+                            // Skip this product if it's the one being viewed on the product page
+                            if (isProductPage && currentProductId && item.product_id == currentProductId) {
+                              console.log("[POS Donation] Skipping cart item (same as current product page):", item.title);
+                              return; // skip this item, will be handled in Step 2
+                            }
                             if (item.line_price / 100.0 >= minVal) {
                                 isApplicable = true;
                                 totalValCents += item.line_price;
@@ -246,28 +270,45 @@
                                 }
                             }
                         });
-                    } else if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
-                      // On product page with empty cart, show potential donation
-                      var qty = currentQty;
-                      var qtyInput = document.querySelector('input[name="quantity"], .quantity__input');
-                      if (qtyInput && qty === 1) qty = parseInt(qtyInput.value) || 1;
+                    }
+
+                    // Step 2: On product pages, include the currently-viewed product's
+                    // selected quantity so the UI reflects the quantity selector accurately.
+                    if (isProductPage) {
+                      var qty = 1;
+                      var qtyInput = document.querySelector('input[name="quantity"], .quantity__input, .product-form__quantity input[type="number"], .quantity-input');
+                      if (qtyInput) qty = parseInt(qtyInput.value) || 1;
                       
-                      var priceCents = window.ShopifyAnalytics.meta.product.variants[0].price;
-                      var urlParams = new URLSearchParams(window.location.search);
-                      var variantId = urlParams.get('variant');
-                      if (variantId) {
-                        var v = window.ShopifyAnalytics.meta.product.variants.find(v => v.id == variantId);
-                        if (v) priceCents = v.price;
+                      var priceCents = 0;
+                      // Try ShopifyAnalytics first (most reliable)
+                      if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
+                        priceCents = window.ShopifyAnalytics.meta.product.variants[0].price;
+                        var urlParams = new URLSearchParams(window.location.search);
+                        var variantId = urlParams.get('variant');
+                        if (variantId) {
+                          var v = window.ShopifyAnalytics.meta.product.variants.find(function(v) { return v.id == variantId; });
+                          if (v) priceCents = v.price;
+                        }
+                      }
+                      // Fallback: read price from the page's product JSON or meta tag
+                      if (!priceCents) {
+                        var priceEl = document.querySelector('[data-product-price], .product__price .money, .price--regular .money, .product-single__price');
+                        if (priceEl) {
+                          var rawPrice = priceEl.textContent.replace(/[^0-9.]/g, '');
+                          priceCents = Math.round(parseFloat(rawPrice) * 100) || 0;
+                        }
                       }
 
-                      if (priceCents * qty / 100.0 >= minVal) {
+                      if (priceCents > 0 && (priceCents * qty / 100.0) >= minVal) {
                         isApplicable = true;
-                        totalValCents = priceCents * qty;
+                        var currentProductTotal = priceCents * qty;
+                        totalValCents += currentProductTotal;
                         if (baseSettings.donationType === "percentage" || baseSettings.donationType === "Percentage") {
-                          donationAmtCents = (baseSettings.donationValue / 100) * totalValCents;
+                          donationAmtCents += (baseSettings.donationValue / 100) * currentProductTotal;
                         } else {
-                          donationAmtCents = baseSettings.donationValue * 100 * qty;
+                          donationAmtCents += baseSettings.donationValue * 100 * qty;
                         }
+                        console.log("[POS Donation] Product Page: Qty:", qty, "Price(cents):", priceCents, "Donation added:", baseSettings.donationValue * 100 * qty);
                       }
                     }
                 } else {
@@ -328,27 +369,19 @@
         // Handle quantity changes and other inputs
         document.addEventListener('change', function(e) {
           if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input') || e.target.name === 'id') {
-            if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input')) {
-              currentQty = parseInt(e.target.value) || currentQty;
-            }
             setTimeout(updateMessage, 100);
           }
         });
         
         document.addEventListener('input', function(e) {
           if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input')) {
-            currentQty = parseInt(e.target.value) || currentQty;
             updateMessage();
           }
         });
         
         document.addEventListener('click', function(e) {
           if (e.target.closest('[name="quantity"], .quantity__input, .quantity-button, .qty-btn, .quantity-selector')) {
-            setTimeout(function() {
-              var qtyInput = document.querySelector('input[name="quantity"], .quantity__input');
-              if (qtyInput) currentQty = parseInt(qtyInput.value) || currentQty;
-              updateMessage();
-            }, 100);
+            setTimeout(updateMessage, 100);
           }
         });
 
