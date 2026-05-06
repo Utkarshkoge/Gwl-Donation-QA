@@ -352,7 +352,9 @@
               
               function smartReplace(html, variable, value) {
                 var regex = new RegExp('\\{(\\s*<[^>]*>\\s*)*' + variable + '(\\s*<[^>]*>\\s*)*\\}', 'gi');
-                return html.replace(regex, value);
+                // Escape $ in value to prevent String.replace() from treating $1, $2 etc. as capture group refs
+                var safeValue = String(value).replace(/\$/g, '$$$$');
+                return html.replace(regex, safeValue);
               }
 
               msg = smartReplace(msg, "Percentage", donationValue + "%");
