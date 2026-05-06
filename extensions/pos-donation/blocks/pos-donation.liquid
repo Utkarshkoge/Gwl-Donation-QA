@@ -201,7 +201,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ attributes: { '_donation_widget_active': 'true' } })
-          }).catch(e => console.error("Donation heartbeat failed:", e));
+          }).catch(function(e) { console.error("Donation heartbeat failed:", e); });
         }
 
         var currencyIso = {{ cart.currency.iso_code | json }} || "USD";
@@ -211,35 +211,41 @@
             return formatter.format(cents / 100);
         }
 
+        // Normalize donationBasis once on load (case-insensitive)
+        var donationBasis = (baseSettings.donationBasis || 'order').toString().trim().toLowerCase();
+        var donationType = (baseSettings.donationType || 'fixed').toString().trim().toLowerCase();
+        var donationValue = parseFloat(baseSettings.donationValue) || 0;
+        var minVal = parseFloat(baseSettings.minimumValue) || 0;
+        if (donationType === 'percentage') minVal = 0;
+
+        console.log("[POS Donation] Normalized — basis:", donationBasis, "type:", donationType, "value:", donationValue, "minVal:", minVal);
+
         function updateMessage() {
           var containerEl = document.getElementById("pos-donation-{{ block.id }}");
-          var minVal = baseSettings.minimumValue || 0;
-          if (baseSettings.donationType === "percentage") {
-              minVal = 0;
-          }
 
           // Fetch current cart to ensure accuracy
           fetch('/cart.js?t=' + new Date().getTime(), { cache: 'no-store' })
-            .then(res => res.json())
-            .then(cart => {
+            .then(function(res) { return res.json(); })
+            .then(function(cart) {
               var isApplicable = false;
               var totalValCents = 0;
               var donationAmtCents = 0;
               
-              console.log("[POS Donation] Cart Data:", cart);
-              console.log("[POS Donation] Settings:", baseSettings);
+              console.log("[POS Donation] Cart fetched — items:", cart.items ? cart.items.length : 0, "total_price:", cart.total_price);
 
-              if (baseSettings.donationBasis === 'product' || baseSettings.donationBasis === 'Product') {
-                    // Detect if we're on a product page vs cart page
-                    var isCartPage = (window.location.pathname === '/cart') 
-                                  || (document.querySelector('form[action="/cart"], .cart__contents, .cart-template') !== null);
+              if (donationBasis === 'product') {
+                    // Detect page type
+                    var isCartPage = (window.location.pathname === '/cart')
+                                  || (document.querySelector('.cart__contents, .cart-template, [data-cart-form]') !== null);
                     var isProductPage = !isCartPage && (
-                      (document.querySelector('[data-product-id], form[action*="/cart/add"], .product-form, .product-single') !== null)
-                      || (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product)
+                      (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product)
                       || (window.meta && window.meta.product)
+                      || (document.querySelector('form[action*="/cart/add"], .product-form, .product-single, [data-product-id]') !== null)
                     );
 
-                    // Determine the current product's ID on product pages (to avoid double-counting from cart)
+                    console.log("[POS Donation] Page detection — isCartPage:", isCartPage, "isProductPage:", isProductPage);
+
+                    // Get current product ID on product pages (for deduplication)
                     var currentProductId = null;
                     if (isProductPage) {
                       if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
@@ -249,80 +255,85 @@
                       }
                     }
 
-                    // Step 1: Calculate donation from existing cart items
-                    // On product pages, skip the currently-viewed product to avoid double-counting
+                    // ── Cart items donation calculation ──
                     if (cart.items && cart.items.length > 0) {
                         cart.items.forEach(function(item) {
-                            // Skip this product if it's the one being viewed on the product page
-                            if (isProductPage && currentProductId && item.product_id == currentProductId) {
-                              console.log("[POS Donation] Skipping cart item (same as current product page):", item.title);
-                              return; // skip this item, will be handled in Step 2
+                            // On product pages, skip current product (handled in Step 2)
+                            if (isProductPage && currentProductId && String(item.product_id) === String(currentProductId)) {
+                              console.log("[POS Donation] Skipping cart item (viewed product):", item.title);
+                              return;
                             }
-                            if (item.line_price / 100.0 >= minVal) {
+                            var itemQty = item.quantity || 1;
+                            var itemUnitPrice = item.price || 0; // price per unit in cents
+                            var itemLinePrice = item.line_price || (itemUnitPrice * itemQty);
+
+                            if (itemUnitPrice / 100.0 >= minVal || itemLinePrice / 100.0 >= minVal) {
                                 isApplicable = true;
-                                totalValCents += item.line_price;
-                                if (baseSettings.donationType === "percentage" || baseSettings.donationType === "Percentage") {
-                                    donationAmtCents += item.line_price * (baseSettings.donationValue / 100.0);
+                                totalValCents += itemLinePrice;
+                                if (donationType === 'percentage') {
+                                    donationAmtCents += itemLinePrice * (donationValue / 100.0);
                                 } else {
-                                    var lineDonation = baseSettings.donationValue * 100 * item.quantity;
-                                    console.log("[POS Donation] Line Item:", item.title, "Qty:", item.quantity, "Donation:", lineDonation);
+                                    // Fixed amount × quantity
+                                    var lineDonation = donationValue * 100 * itemQty;
                                     donationAmtCents += lineDonation;
+                                    console.log("[POS Donation] Cart item:", item.title, "qty:", itemQty, "donation:", lineDonation / 100);
                                 }
                             }
                         });
                     }
 
-                    // Step 2: On product pages, include the currently-viewed product's
-                    // selected quantity so the UI reflects the quantity selector accurately.
+                    // ── Product page: add currently-viewed product's selected qty ──
                     if (isProductPage) {
                       var qty = 1;
-                      var qtyInput = document.querySelector('input[name="quantity"], .quantity__input, .product-form__quantity input[type="number"], .quantity-input');
+                      var qtyInput = document.querySelector(
+                        'input[name="quantity"], .quantity__input, ' +
+                        '.product-form__quantity input[type="number"], .quantity-input, ' +
+                        'input.quantity-selector, .product-form input[type="number"]'
+                      );
                       if (qtyInput) qty = parseInt(qtyInput.value) || 1;
                       
                       var priceCents = 0;
-                      // Try ShopifyAnalytics first (most reliable)
                       if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
                         priceCents = window.ShopifyAnalytics.meta.product.variants[0].price;
                         var urlParams = new URLSearchParams(window.location.search);
                         var variantId = urlParams.get('variant');
                         if (variantId) {
-                          var v = window.ShopifyAnalytics.meta.product.variants.find(function(v) { return v.id == variantId; });
-                          if (v) priceCents = v.price;
+                          var matched = window.ShopifyAnalytics.meta.product.variants.find(function(v) { return String(v.id) === String(variantId); });
+                          if (matched) priceCents = matched.price;
                         }
                       }
-                      // Fallback: read price from the page's product JSON or meta tag
                       if (!priceCents) {
                         var priceEl = document.querySelector('[data-product-price], .product__price .money, .price--regular .money, .product-single__price');
                         if (priceEl) {
-                          var rawPrice = priceEl.textContent.replace(/[^0-9.]/g, '');
-                          priceCents = Math.round(parseFloat(rawPrice) * 100) || 0;
+                          priceCents = Math.round(parseFloat(priceEl.textContent.replace(/[^0-9.]/g, '')) * 100) || 0;
                         }
                       }
 
-                      if (priceCents > 0 && (priceCents * qty / 100.0) >= minVal) {
+                      if (priceCents > 0 && (priceCents / 100.0) >= minVal) {
                         isApplicable = true;
-                        var currentProductTotal = priceCents * qty;
-                        totalValCents += currentProductTotal;
-                        if (baseSettings.donationType === "percentage" || baseSettings.donationType === "Percentage") {
-                          donationAmtCents += (baseSettings.donationValue / 100) * currentProductTotal;
+                        totalValCents += priceCents * qty;
+                        if (donationType === 'percentage') {
+                          donationAmtCents += (donationValue / 100) * priceCents * qty;
                         } else {
-                          donationAmtCents += baseSettings.donationValue * 100 * qty;
+                          donationAmtCents += donationValue * 100 * qty;
                         }
-                        console.log("[POS Donation] Product Page: Qty:", qty, "Price(cents):", priceCents, "Donation added:", baseSettings.donationValue * 100 * qty);
+                        console.log("[POS Donation] Product page — qty:", qty, "price:", priceCents, "donation:", donationValue * 100 * qty / 100);
                       }
                     }
                 } else {
-                    // Order based
+                    // ── Order-based ──
                     if (cart.total_price / 100.0 >= minVal) {
                       isApplicable = true;
                       totalValCents = cart.total_price;
-                      if (baseSettings.donationType === "percentage" || baseSettings.donationType === "Percentage") {
-                        donationAmtCents = (baseSettings.donationValue / 100) * totalValCents;
+                      if (donationType === 'percentage') {
+                        donationAmtCents = (donationValue / 100) * totalValCents;
                       } else {
-                        donationAmtCents = baseSettings.donationValue * 100;
+                        donationAmtCents = donationValue * 100;
                       }
                     }
                 }
+
+              console.log("[POS Donation] Result — applicable:", isApplicable, "total:", totalValCents / 100, "donation:", donationAmtCents / 100);
 
               var globalEnabled = {{ app.metafields.common.enabled.value | json }};
               if (globalEnabled === false || baseSettings.enabled === false) {
@@ -344,8 +355,8 @@
                 return html.replace(regex, value);
               }
 
-              msg = smartReplace(msg, "Percentage", baseSettings.donationValue + "%");
-              msg = smartReplace(msg, "FixedAmount", formatMoney(baseSettings.donationValue * 100));
+              msg = smartReplace(msg, "Percentage", donationValue + "%");
+              msg = smartReplace(msg, "FixedAmount", formatMoney(donationValue * 100));
               msg = smartReplace(msg, "donationAmount", formatMoney(donationAmtCents));
               msg = smartReplace(msg, "totalOrderValue", formatMoney(totalValCents));
               
@@ -356,8 +367,43 @@
                   html += '<div class="pos-info-row"><span class="pos-info-icon">ⓘ</span><span class="pos-info-text">' + tooltip + '</span></div>';
               }
               contentEl.innerHTML = html;
-            }).catch(e => console.error("Failed to update donation message:", e));
+            }).catch(function(e) { console.error("Failed to update donation message:", e); });
         }
+
+        // ── Intercept cart AJAX calls so we re-calculate after any cart change ──
+        var origFetch = window.fetch;
+        window.fetch = function() {
+          var url = arguments[0];
+          var urlStr = (typeof url === 'string') ? url : (url && url.url ? url.url : '');
+          var result = origFetch.apply(this, arguments);
+          if (urlStr && (urlStr.indexOf('/cart/change') !== -1 || urlStr.indexOf('/cart/update') !== -1 || urlStr.indexOf('/cart/add') !== -1)) {
+            result.then(function() {
+              // Wait for Shopify to process, then update
+              setTimeout(updateMessage, 300);
+              setTimeout(updateMessage, 800);
+            }).catch(function(){});
+          }
+          return result;
+        };
+
+        // Also intercept XMLHttpRequest for older themes
+        var origXHROpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+          this._posUrl = url;
+          return origXHROpen.apply(this, arguments);
+        };
+        var origXHRSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function() {
+          var self = this;
+          var url = this._posUrl || '';
+          if (url.indexOf('/cart/change') !== -1 || url.indexOf('/cart/update') !== -1 || url.indexOf('/cart/add') !== -1) {
+            this.addEventListener('load', function() {
+              setTimeout(updateMessage, 300);
+              setTimeout(updateMessage, 800);
+            });
+          }
+          return origXHRSend.apply(this, arguments);
+        };
 
         var originalPushState = history.pushState;
         var originalReplaceState = history.replaceState;
@@ -366,10 +412,10 @@
         history.pushState = function() { originalPushState.apply(this, arguments); updateMessage(); };
         history.replaceState = function() { originalReplaceState.apply(this, arguments); updateMessage(); };
 
-        // Handle quantity changes and other inputs
+        // Handle quantity changes (product page selectors)
         document.addEventListener('change', function(e) {
           if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input') || e.target.name === 'id') {
-            setTimeout(updateMessage, 100);
+            setTimeout(updateMessage, 150);
           }
         });
         
@@ -379,19 +425,29 @@
           }
         });
         
+        // Broad click handler for +/- buttons on both product and cart pages
         document.addEventListener('click', function(e) {
-          if (e.target.closest('[name="quantity"], .quantity__input, .quantity-button, .qty-btn, .quantity-selector')) {
-            setTimeout(updateMessage, 100);
+          var target = e.target;
+          if (target.closest(
+            '[name="quantity"], .quantity__input, .quantity-button, .qty-btn, ' +
+            '.quantity-selector, .js-qty__adjust, .ajaxcart__qty-adjust, ' +
+            '.cart__qty-btn, button[data-quantity-minus], button[data-quantity-plus], ' +
+            '.quantity__button, .cart-item__quantity-button'
+          )) {
+            // Multiple timeouts to catch AJAX-based cart updates
+            setTimeout(updateMessage, 200);
+            setTimeout(updateMessage, 600);
+            setTimeout(updateMessage, 1200);
           }
         });
 
-        // MutationObserver to watch for value changes on quantity inputs
+        // MutationObserver for quantity inputs (catches programmatic value changes)
         try {
-          var qtyInput = document.querySelector('input[name="quantity"], .quantity__input');
-          if (qtyInput) {
-            var observer = new MutationObserver(function() { updateMessage(); });
+          var qtyInputs = document.querySelectorAll('input[name="quantity"], .quantity__input, .cart-item__quantity input');
+          qtyInputs.forEach(function(qtyInput) {
+            var observer = new MutationObserver(function() { setTimeout(updateMessage, 100); });
             observer.observe(qtyInput, { attributes: true, attributeFilter: ['value'] });
-          }
+          });
         } catch(e) {}
 
         // Initial update
