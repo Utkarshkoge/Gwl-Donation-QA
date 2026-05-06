@@ -28,7 +28,7 @@
   {% endif %}
 
   {% comment %} If we are in the cart or have items, override with cart total if it makes sense {% endcomment %}
-  {% if cart.item_count > 0 %}
+  {% if request.page_type == 'cart' and cart.item_count > 0 %}
     {% assign cart_applicable = false %}
     {% assign cart_total_val = 0 %}
     {% assign cart_donation_total = 0 %}
@@ -195,6 +195,8 @@
         var contentEl = document.getElementById("pos-donation-content-{{ block.id }}");
         var baseSettings = {{ app.metafields.pos_donation.settings.value | json }};
         if (!baseSettings) return;
+        var pageType = {{ request.page_type | json }};
+        var currentQty = 1;
 
         if (baseSettings.enabled) {
           fetch('/cart/update.js', {
@@ -230,7 +232,7 @@
               console.log("[POS Donation] Settings:", baseSettings);
 
               if (baseSettings.donationBasis === 'product' || baseSettings.donationBasis === 'Product') {
-                    if (cart.items && cart.items.length > 0) {
+                    if (pageType === 'cart' && cart.items && cart.items.length > 0) {
                         cart.items.forEach(function(item) {
                             if (item.line_price / 100.0 >= minVal) {
                                 isApplicable = true;
@@ -246,9 +248,9 @@
                         });
                     } else if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
                       // On product page with empty cart, show potential donation
-                      var qty = 1;
+                      var qty = currentQty;
                       var qtyInput = document.querySelector('input[name="quantity"], .quantity__input');
-                      if (qtyInput) qty = parseInt(qtyInput.value) || 1;
+                      if (qtyInput && qty === 1) qty = parseInt(qtyInput.value) || 1;
                       
                       var priceCents = window.ShopifyAnalytics.meta.product.variants[0].price;
                       var urlParams = new URLSearchParams(window.location.search);
@@ -326,19 +328,27 @@
         // Handle quantity changes and other inputs
         document.addEventListener('change', function(e) {
           if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input') || e.target.name === 'id') {
+            if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input')) {
+              currentQty = parseInt(e.target.value) || currentQty;
+            }
             setTimeout(updateMessage, 100);
           }
         });
         
         document.addEventListener('input', function(e) {
           if (e.target.name === 'quantity' || e.target.classList.contains('quantity__input')) {
+            currentQty = parseInt(e.target.value) || currentQty;
             updateMessage();
           }
         });
         
         document.addEventListener('click', function(e) {
           if (e.target.closest('[name="quantity"], .quantity__input, .quantity-button, .qty-btn, .quantity-selector')) {
-            setTimeout(updateMessage, 100);
+            setTimeout(function() {
+              var qtyInput = document.querySelector('input[name="quantity"], .quantity__input');
+              if (qtyInput) currentQty = parseInt(qtyInput.value) || currentQty;
+              updateMessage();
+            }, 100);
           }
         });
 
