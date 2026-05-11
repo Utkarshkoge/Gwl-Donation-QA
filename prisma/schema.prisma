@@ -165,8 +165,9 @@ model AppSettings {
   ccEmail         String   @default("")
   subjectLine     String   @default("Donation Receipt")
   emailTemplate   String   @default("")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  proxySubpath     String   @default("pos-donation")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model RecurringDonationLog {

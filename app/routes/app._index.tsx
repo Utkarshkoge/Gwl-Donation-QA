@@ -128,6 +128,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     enabled: appSettings?.enabled ?? true,
+    proxySubpath: appSettings?.proxySubpath ?? "pos-donation",
     shop: session.shop,
     currency: currencyCode,
     stats: {
@@ -162,15 +163,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
 
   const enabled = formData.get("enabled") === "true";
+  const proxySubpath = (formData.get("proxySubpath") as string) || "pos-donation";
 
   await prisma.appSettings.upsert({
-
     where: { shop },
-
-    update: { enabled },
-
-    create: { shop, enabled },
-
+    update: { enabled, proxySubpath },
+    create: { shop, enabled, proxySubpath },
   });
 
   try {
@@ -212,9 +210,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             type: "boolean",
 
             value: String(enabled)
-
+          },
+          {
+            ownerId: appId,
+            namespace: "common",
+            key: "proxy_subpath",
+            type: "single_line_text_field",
+            value: proxySubpath
           }
-
         ]
 
       }
@@ -248,6 +251,7 @@ export default function Index() {
   });
 
   const [enabled, setEnabled] = useState(loaderData?.enabled ?? true);
+  const [proxySubpath, setProxySubpath] = useState(loaderData?.proxySubpath ?? "pos-donation");
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
@@ -263,6 +267,14 @@ export default function Index() {
     setEnabled(nextEnabled);
     const formData = new FormData();
     formData.append("enabled", String(nextEnabled));
+    formData.append("proxySubpath", proxySubpath);
+    fetcher.submit(formData, { method: "POST" });
+  };
+
+  const saveProxySubpath = () => {
+    const formData = new FormData();
+    formData.append("enabled", String(enabled));
+    formData.append("proxySubpath", proxySubpath);
     fetcher.submit(formData, { method: "POST" });
   };
 
@@ -426,7 +438,7 @@ export default function Index() {
             <s-stack gap="base">
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <s-text type="strong">Global App Status</s-text>
-                <s-badge tone={enabled ? "success" : "warning"}>{enabled ? "Enable" : "Paused"}</s-badge>
+                <s-badge tone={enabled ? "success" : "warning"}>{enabled ? "Enabled" : "Paused"}</s-badge>
               </div>
               <s-text color="subdued">
                 {enabled
@@ -438,6 +450,25 @@ export default function Index() {
               {enabled ? "Disable All Widgets" : "Enable All Widgets"}
             </s-button>
           </div>
+        </s-box>
+
+        {/* --- PROXY SETTING --- */}
+        <s-box padding="large" background="base" borderWidth="base" borderRadius="large" borderColor="base">
+          <s-stack gap="base">
+            <s-text type="strong">App Proxy Configuration</s-text>
+            <s-text color="subdued">If your storefront widgets or subscription links return a 404, check your App Proxy subpath in Shopify Admin and ensure it matches here.</s-text>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', maxWidth: '500px' }}>
+              <div style={{ flex: 1 }}>
+                <s-text-field
+                  label="Proxy Subpath"
+                  value={proxySubpath}
+                  onInput={(e: any) => setProxySubpath(e.target.value)}
+                  helpText="Default is 'pos-donation'. Change only if Shopify Admin shows a different path."
+                />
+              </div>
+              <s-button onClick={saveProxySubpath} loading={fetcher.state === "submitting"}>Update Proxy</s-button>
+            </div>
+          </s-stack>
         </s-box>
 
         {/* --- CHANNELS --- */}

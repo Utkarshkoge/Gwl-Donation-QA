@@ -23,8 +23,8 @@
   }
 
   function resolveApiUrl(container) {
-    const base = (container.dataset.apiUrl || "").replace(/\/$/, "");
-    return base ? base + "/api/campaigns" : "/apps/pos-donation/api/campaigns";
+    const subpath = container.dataset.proxyPath || "pos-donation";
+    return "/apps/" + subpath + "/api/campaigns";
   }
 
   function setFeedback(el, msg, isError) {

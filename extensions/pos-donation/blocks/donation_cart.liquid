@@ -8,7 +8,7 @@
   id="donation-cart-block-{{ block.id }}"
   class="donation-cart-block dc-premium-outer"
   data-block-id="{{ block.id }}"
-  data-api-url="{{ block.settings.api_base_url }}"
+  data-proxy-path="{{ block.settings.proxy_subpath | default: 'pos-donation' }}"
   style="display: {% if global_enabled == false %}none{% else %}block{% endif %};"
 >
   <div class="dc-premium-card">
@@ -251,8 +251,10 @@
   "settings": [
     {
       "type": "text",
-      "id": "api_base_url",
-      "label": "App API Base URL"
+      "id": "proxy_subpath",
+      "label": "App Proxy Subpath",
+      "default": "pos-donation",
+      "info": "Only change if your App Proxy URL in Shopify Admin ends with something else (e.g., pos-donation-1)"
     },
     {
       "type": "text",

@@ -13,6 +13,7 @@ export default async function (api) {
 
 function Extension({ api }) {
   const [myshopifyDomain, setMyshopifyDomain] = useState(null);
+  const [proxySubpath, setProxySubpath] = useState('pos-donation');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -24,13 +25,20 @@ function Extension({ api }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchShopDomain() {
+    async function fetchData() {
       try {
         const res = await fetch('shopify://customer-account/api/2026-01/graphql.json', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `query { shop { myshopifyDomain } }`
+            query: `query { 
+              shop { myshopifyDomain } 
+              app {
+                metafield(namespace: "common", key: "proxy_subpath") {
+                  value
+                }
+              }
+            }`
           }),
         });
 
@@ -42,18 +50,21 @@ function Extension({ api }) {
 
         if (cancelled) return;
 
-        // Validate response structure
         const domain = data?.data?.shop?.myshopifyDomain;
+        const subpath = data?.data?.app?.metafield?.value;
+
         if (domain) {
           setMyshopifyDomain(domain);
+          if (subpath) {
+            setProxySubpath(subpath);
+          }
         } else {
-          // GraphQL returned successfully but no domain — may be a permissions issue
-          console.warn('[ManageSubscription] No myshopifyDomain in response:', data);
+          console.warn('[ManageSubscription] No domain in response:', data);
           setError(true);
         }
       } catch (err) {
         if (cancelled) return;
-        console.error('[ManageSubscription] Failed to fetch shop domain:', err);
+        console.error('[ManageSubscription] Failed to fetch data:', err);
         setError(true);
       } finally {
         if (!cancelled) {
@@ -62,7 +73,7 @@ function Extension({ api }) {
       }
     }
 
-    fetchShopDomain();
+    fetchData();
 
     return () => { cancelled = true; };
   }, []);
@@ -73,7 +84,7 @@ function Extension({ api }) {
   // If there was an error, render nothing silently instead of crashing
   if (error || !myshopifyDomain) return null;
 
-  let subscriptionsUrl = `https://${myshopifyDomain}/apps/pos-donation/subscriptions`;
+  let subscriptionsUrl = `https://${myshopifyDomain}/apps/${proxySubpath}/subscriptions`;
   if (customerId) {
     subscriptionsUrl += `?logged_in_customer_id=${customerId}`;
   }
