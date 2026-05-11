@@ -23,8 +23,7 @@
   }
 
   function resolveApiUrl(container) {
-    const base = (container.dataset.apiUrl || "").replace(/\/$/, "");
-    return base ? base + "/api/campaigns" : "/apps/pos-donation/api/campaigns";
+    return "/apps/pos-donation/api/campaigns";
   }
 
   function setFeedback(el, msg, isError) {

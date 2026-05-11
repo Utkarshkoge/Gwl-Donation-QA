@@ -8,7 +8,6 @@
   id="donation-cart-block-{{ block.id }}"
   class="donation-cart-block dc-premium-outer"
   data-block-id="{{ block.id }}"
-  data-api-url="{{ block.settings.api_base_url }}"
   style="display: {% if global_enabled == false %}none{% else %}block{% endif %};"
 >
   <div class="dc-premium-card">
@@ -249,11 +248,6 @@
   "name": "Donation Cart Page",
   "target": "section",
   "settings": [
-    {
-      "type": "text",
-      "id": "api_base_url",
-      "label": "App API Base URL"
-    },
     {
       "type": "text",
       "id": "heading",
