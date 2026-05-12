@@ -69,7 +69,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     appSettings,
     posSettings,
     roundupSettings,
-    campaignsCount
+    campaignsCount,
+    subscription
   ] = await Promise.all([
     prisma.donation.aggregate({
       where: { campaign: { shop }, status: "active" },
