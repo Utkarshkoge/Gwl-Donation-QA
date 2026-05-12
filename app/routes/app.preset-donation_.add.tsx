@@ -647,7 +647,6 @@ export default function AddCampaignPage() {
         slot="secondary-action"
         onClick={handleCancel}
         disabled={isSubmitting}
-        style={{ marginBottom: '16px' }}
       >
         Cancel
       </s-button>
@@ -670,7 +669,7 @@ export default function AddCampaignPage() {
         </div>
       )}
 
-      <div style={{ marginTop: '24px' }}>
+      <div style={{ marginTop: '16px' }}>
         <AddCampaign formData={formData} onFormChange={handleFormChange} currency={currency} />
       </div>
     </s-page>

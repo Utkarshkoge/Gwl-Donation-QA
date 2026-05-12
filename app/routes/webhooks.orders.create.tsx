@@ -325,16 +325,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         if (isApplicable || hasCampaignDonation) {
             // ── Deduplication Fix: Check if an email was already sent for this order ──
-            const [posSent, recSent, roundSent] = await Promise.all([
+            const [posSent, recSent, roundSent, presetSent] = await Promise.all([
                 (db as any).posDonationLog.findFirst({ where: { orderId: orderIdStr, receiptStatus: "sent" } }),
                 (db as any).recurringDonationLog.findFirst({ where: { orderId: orderIdStr, receiptStatus: "sent" } }),
                 (db as any).roundUpDonationLog.findFirst({ where: { orderId: orderIdStr, receiptStatus: "sent" } }),
+                (db as any).donation.findFirst({ where: { orderId: orderId, receiptStatus: "sent" } }),
             ]);
 
-            if (posSent || recSent || roundSent) {
+            if (posSent || recSent || roundSent || presetSent) {
                 console.log(`[Webhook] Email deduplication: Receipt already sent for Order ${order.name}. Skipping email logic.`);
-                // However, we still want to finish the DB sync/tagging if needed
-                // But usually, if it was sent, everything else is done too.
                 return new Response("OK", { status: 200 });
             }
 

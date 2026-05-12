@@ -666,20 +666,43 @@ export default function EditCampaignPage() {
     return JSON.stringify(formData) !== JSON.stringify(initialFormData);
   }, [formData, initialFormData]);
 
-  const isSubmitting = fetcher.state === "submitting";
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      if (fetcher.data.success) {
+        setSubmitSuccess(true);
+        setSubmitError(null);
+        setTimeout(() => navigate("/app/preset-donation"), 1500);
+      } else {
+        setSubmitError(fetcher.data.error || "An error occurred.");
+        setSubmitSuccess(false);
+      }
+    }
+  }, [fetcher.state, fetcher.data, navigate]);
 
   const handleFormChange = (changes: Partial<CampaignFormData>) => {
     setFormData((prev) => ({ ...prev, ...changes }));
+    if (submitError) setSubmitError(null);
   };
 
   const handleSave = () => {
-    console.log("[Edit Page] handleSave called");
-    console.log(
-      "[Edit Page] formData.imageUrl:",
-      formData.imageUrl
-        ? `(${formData.imageUrl.length} chars, ${formData.imageUrl.substring(0, 50)}...)`
-        : "empty",
-    );
+    if (!formData.name.trim()) {
+      setSubmitError("Please enter a campaign title");
+      return;
+    }
+    if (!formData.description.trim()) {
+      setSubmitError("Please enter a campaign description");
+      return;
+    }
+    if (formData.donationAmounts.length === 0) {
+      setSubmitError("Please add at least one donation amount");
+      return;
+    }
+
+    setSubmitError(null);
+    setSubmitSuccess(false);
 
     const fd = new FormData();
     fd.append("name", formData.name);
@@ -692,15 +715,8 @@ export default function EditCampaignPage() {
     fd.append("otherAmountTitle", formData.otherAmountTitle);
     fd.append("isRecurringEnabled", String(formData.isRecurringEnabled));
 
-    console.log("[Edit Page] FormData created, submitting...");
     fetcher.submit(fd, { method: "post" });
   };
-
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.success) {
-      navigate("/app/preset-donation");
-    }
-  }, [fetcher.state, fetcher.data, navigate]);
 
   const handleCancel = () => navigate("/app/preset-donation");
 
@@ -718,11 +734,27 @@ export default function EditCampaignPage() {
         slot="secondary-action"
         onClick={handleCancel}
         disabled={isSubmitting}
-        style={{ marginBottom: '16px' }}
       >
         Cancel
       </s-button>
-      <div style={{ marginTop: '24px' }}>
+
+      {submitSuccess && (
+        <div style={{ marginBottom: '16px' }}>
+          <s-banner tone="success">
+            <s-paragraph>Campaign updated successfully! Redirecting...</s-paragraph>
+          </s-banner>
+        </div>
+      )}
+
+      {submitError && (
+        <div style={{ marginBottom: '16px' }}>
+          <s-banner tone="critical">
+            <s-paragraph>{submitError}</s-paragraph>
+          </s-banner>
+        </div>
+      )}
+
+      <div style={{ marginTop: '16px' }}>
         <AddCampaign formData={formData} onFormChange={handleFormChange} currency={currency} />
       </div>
     </s-page>

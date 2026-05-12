@@ -65,9 +65,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
         }
     `);
     const currencyData = await currencyResponse.json();
-    const currency = currencyData.data?.shop?.currencyCode || "USD";
+    const blockConfig = await prisma.blockConfig.findUnique({
+        where: { shop: session.shop },
+    });
 
-    return { settings, currency };
+    return { settings, currency, blockConfig };
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -78,20 +80,20 @@ export async function action({ request }: ActionFunctionArgs) {
         where: { shop: session.shop },
     });
 
-    const enabled = formData.get("enabled") === "true";
-    const campaignTitle = String(formData.get("campaignTitle") || "");
-    const description = String(formData.get("description") || "");
-    const showImage = formData.get("showImage") === "true";
-    const checkboxLabel = String(formData.get("checkboxLabel") || "");
-    const rounding = String(formData.get("rounding") || "nearest1");
-    const customAmount = String(formData.get("customAmount") || "");
-    const donationOrderTag = String(formData.get("donationOrderTag") || "");
+    const enabled = formData.has("enabled") ? formData.get("enabled") === "true" : (settings?.enabled ?? false);
+    const campaignTitle = formData.has("campaignTitle") ? String(formData.get("campaignTitle")) : (settings?.campaignTitle ?? "");
+    const description = formData.has("description") ? String(formData.get("description")) : (settings?.description ?? "");
+    const showImage = formData.has("showImage") ? formData.get("showImage") === "true" : (settings?.showImage ?? false);
+    const checkboxLabel = formData.has("checkboxLabel") ? String(formData.get("checkboxLabel")) : (settings?.checkboxLabel ?? "");
+    const rounding = formData.has("rounding") ? String(formData.get("rounding")) : (settings?.rounding ?? "nearest1");
+    const customAmount = formData.has("customAmount") ? String(formData.get("customAmount")) : (settings?.customAmount ?? "");
+    const donationOrderTag = formData.has("donationOrderTag") ? String(formData.get("donationOrderTag")) : (settings?.donationOrderTag ?? "");
 
-    const additionalDonationEnabled = formData.get("additionalDonationEnabled") === "true";
-    const additionalDonationTitle = String(formData.get("additionalDonationTitle") || "");
-    const placeholderText = String(formData.get("placeholderText") || "");
-    const buttonText = String(formData.get("buttonText") || "");
-    const imageUrl = String(formData.get("imageUrl") || "https://cdn-icons-png.flaticon.com/512/3772/3772231.png");
+    const additionalDonationEnabled = formData.has("additionalDonationEnabled") ? formData.get("additionalDonationEnabled") === "true" : (settings?.additionalDonationEnabled ?? false);
+    const additionalDonationTitle = formData.has("additionalDonationTitle") ? String(formData.get("additionalDonationTitle")) : (settings?.additionalDonationTitle ?? "");
+    const placeholderText = formData.has("placeholderText") ? String(formData.get("placeholderText")) : (settings?.placeholderText ?? "");
+    const buttonText = formData.has("buttonText") ? String(formData.get("buttonText")) : (settings?.buttonText ?? "");
+    const imageUrl = formData.has("imageUrl") ? String(formData.get("imageUrl")) : (settings?.imageUrl ?? "https://cdn-icons-png.flaticon.com/512/3772/3772231.png");
     const isNewImage = imageUrl.startsWith("data:image");
 
 
@@ -1295,7 +1297,10 @@ export default function RoundUpDonationPage() {
                                 " ➺ Select ", "Cart Page", " Template ➺ Click ", "Add Block",
                                 " ➺ Select ", "Round Up Donation"
                             ],
-                            onToggle: (val) => setEnabled(val)
+                            onToggle: (val) => {
+                                setEnabled(val);
+                                fetcher.submit({ enabled: String(val) }, { method: "post" });
+                            }
                         }
                     ]}
                 />
