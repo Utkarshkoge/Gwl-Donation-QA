@@ -40,29 +40,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   shop = shop || url.searchParams.get("shop") || "";
 
   try {
-    // Check if the block is globally enabled for this shop
-    const blockConfig = await prisma.blockConfig.findUnique({
-      where: { shop },
-    });
-
-    // If block is disabled, return empty campaigns
-    if (blockConfig && !blockConfig.cartBlockEnabled) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          recurringConfig: null,
-          campaigns: [],
-          message: "Donation block is currently disabled for this shop."
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
-        }
-      );
-    }
 
     const campaigns = await prisma.campaign.findMany({
       where: {

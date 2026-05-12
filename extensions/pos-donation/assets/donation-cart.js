@@ -249,7 +249,7 @@
         const r = await fetch(apiUrl, { headers: { Accept: "application/json" } });
         if (!r.ok) throw new Error("HTTP " + r.status);
         const json = await r.json();
-        return json.campaigns || [];
+        return json;
       } catch (err) {
         lastError = err;
         console.warn("[DonationCart] Campaign fetch attempt " + (attempt + 1) + " failed:", err.message);
@@ -264,14 +264,15 @@
   /**
    * Build and inject the cart donation widget.
    */
-  async function renderWidget(container, campaigns) {
+  async function renderWidget(container, campaignData) {
     const content = container.querySelector(".donation-cart-block__content");
     const allowCustom = container.dataset.allowCustom !== "false";
+    const campaigns = campaignData.campaigns || [];
+    const disabled = campaignData.disabled === true;
 
-    if (!campaigns.length) {
-      content.innerHTML =
-        '<p style="color:#888;font-size:.88em">No active donation campaigns available.</p>';
-      content.style.display = "";
+    if (disabled || !campaigns.length) {
+      container.style.display = "none";
+      if (content) content.innerHTML = "";
       return;
     }
 

@@ -190,7 +190,7 @@ export async function performSubscriptionAction({
                 donationName: line?.title || "Charity Donation",
                 productImage: line?.variantImage?.url,
                 productTitle: line?.title,
-                manageUrl: `https://${shop}/account/subscriptions`,
+                manageUrl: `https://${shop}/apps/pos-donation/subscriptions`,
                 shippingAddress: fmtAddr(originOrder?.shippingAddress),
                 billingAddress: fmtAddr(originOrder?.billingAddress),
             });
