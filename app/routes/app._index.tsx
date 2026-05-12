@@ -84,7 +84,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     prisma.appSettings.findUnique({ where: { shop } }),
     prisma.posDonationSettings.findUnique({ where: { shop } }),
     prisma.roundUpDonationSettings.findUnique({ where: { shop } }),
-    prisma.campaign.count({ where: { shop, enabled: true } })
+    prisma.campaign.count({ where: { shop, enabled: true } }),
+    prisma.planSubscription.findUnique({ where: { shop } })
   ]);
 
   // Fetch roundup stats from dedicated table
@@ -130,6 +131,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     enabled: appSettings?.enabled ?? true,
     shop: session.shop,
     currency: currencyCode,
+    currentPlan: subscription?.plan ?? "basic",
     stats: {
       totalImpact: totalImpact.toFixed(2),
       totalLast7Days: totalLast7Days.toFixed(2),
@@ -426,7 +428,7 @@ export default function Index() {
             <s-stack gap="base">
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <s-text type="strong">Global App Status</s-text>
-                <s-badge tone={enabled ? "success" : "warning"}>{enabled ? "Enable" : "Paused"}</s-badge>
+                <s-badge tone={enabled ? "success" : "warning"}>{enabled ? "Enabled" : "Paused"}</s-badge>
               </div>
               <s-text color="subdued">
                 {enabled
@@ -436,6 +438,24 @@ export default function Index() {
             </s-stack>
             <s-button variant={enabled ? "secondary" : "primary"} onClick={toggleStatus}>
               {enabled ? "Disable All Widgets" : "Enable All Widgets"}
+            </s-button>
+          </div>
+        </s-box>
+
+        {/* --- CURRENT PLAN --- */}
+        <s-box padding="large" background="base" borderWidth="base" borderRadius="large" borderColor="base">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <s-stack gap="base">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <s-text type="strong">Current Pricing Plan</s-text>
+                <s-badge tone="info">{(loaderData.currentPlan || 'basic').charAt(0).toUpperCase() + (loaderData.currentPlan || 'basic').slice(1)}</s-badge>
+              </div>
+              <s-text color="subdued">
+                You are currently on the {(loaderData.currentPlan || 'basic').charAt(0).toUpperCase() + (loaderData.currentPlan || 'basic').slice(1)} plan. Upgrade to unlock more features.
+              </s-text>
+            </s-stack>
+            <s-button variant="secondary" onClick={() => navigate('/app/pricing')}>
+              View Plans
             </s-button>
           </div>
         </s-box>
@@ -463,7 +483,7 @@ export default function Index() {
                 </s-stack>
                 <div style={{ marginTop: '12px' }}>
                   <s-stack gap="small">
-                    <s-button full-width variant="primary" onClick={() => navigate("/app/preset-donation")}>Manage Setting</s-button>
+                    <s-button full-width variant="primary" onClick={() => navigate("/app/preset-donation")}>Manage Settings</s-button>
                     <s-button full-width variant="secondary" onClick={() => navigate("/app/preset-donation?tab=configuration")}>Configure Theme</s-button>
                   </s-stack>
                 </div>
@@ -477,12 +497,12 @@ export default function Index() {
                   <svg viewBox="0 0 20 20" style={{ width: '22px', fill: '#D82C0D' }}><path d="M7 14.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm6-6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm1.28-4.78a.75.75 0 0 1 0 1.06l-10 10a.75.75 0 0 1-1.06-1.06l10-10a.75.75 0 0 1 1.06 0Z" /></svg>
                 </div>
                 <s-stack gap="base">
-                  <s-text type="strong">Revenue Sharing</s-text>
-                  <s-text color="subdued">Automatically donate a percentage of every order or product sale.</s-text>
+                  <s-text type="strong">Portion of Sale</s-text>
+                  <s-text color="subdued">Donate a fixed amount or percentage from every order to your cause.</s-text>
                 </s-stack>
                 <div style={{ marginTop: '12px' }}>
                   <s-stack gap="small">
-                    <s-button full-width variant="primary" onClick={() => navigate("/app/pos-donation")}>Manage Setting</s-button>
+                    <s-button full-width variant="primary" onClick={() => navigate("/app/pos-donation")}>Manage Settings</s-button>
                     <s-button full-width variant="secondary" onClick={() => navigate("/app/pos-donation?tab=configuration")}>Configure Theme</s-button>
                   </s-stack>
                 </div>
@@ -496,12 +516,12 @@ export default function Index() {
                   <svg viewBox="0 0 20 20" style={{ width: '22px', fill: '#965A00' }}><path d="M10 2c-3.5 0-6.5 1.5-6.5 3.5s3 3.5 6.5 3.5 6.5-1.5 6.5-3.5-3-3.5-6.5-3.5Zm0 12c-3.5 0-6.5-1.5-6.5-3.5v-2.26c1.61 1.07 3.93 1.76 6.5 1.76s4.89-.69 6.5-1.76v2.26c0 2-3 3.5-6.5 3.5Zm0 4c-3.5 0-6.5-1.5-6.5-3.5v-2.26c1.61 1.07 3.93 1.76 6.5 1.76s4.89-.69 6.5-1.76v2.26c0 2-3 3.5-6.5 3.5Z" /></svg>
                 </div>
                 <s-stack gap="base">
-                  <s-text type="strong">Change Roundups</s-text>
-                  <s-text color="subdued">Round up the order total at checkout and donate the difference.</s-text>
+                  <s-text type="strong">Round-Up Donation</s-text>
+                  <s-text color="subdued">Round up the cart total and donate the spare change to your cause.</s-text>
                 </s-stack>
                 <div style={{ marginTop: '12px' }}>
                   <s-stack gap="small">
-                    <s-button full-width variant="primary" onClick={() => navigate("/app/roundup")}>Manage Setting</s-button>
+                    <s-button full-width variant="primary" onClick={() => navigate("/app/roundup")}>Manage Settings</s-button>
                     <s-button full-width variant="secondary" onClick={() => navigate("/app/roundup?tab=integration")}>Configure Theme</s-button>
                   </s-stack>
                 </div>

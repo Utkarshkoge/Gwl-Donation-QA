@@ -12,7 +12,6 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import CampaignList from "../components/CampaignList";
 import ConfigurationTab, { PRODUCT_PREVIEW_SVG, CART_PREVIEW_SVG } from "../components/ConfigurationTab";
-import SettingsTab from "../components/SettingsTab";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -140,7 +139,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 const tabs = [
   { id: "campaign", label: "Donation Campaigns" },
-  { id: "settings", label: "Settings" },
   { id: "config", label: "Configuration" },
 ];
 
@@ -151,24 +149,12 @@ export default function PresetDonation() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTabParam = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState(
-    initialTabParam === "configuration" ? "config" :
-      (initialTabParam === "settings" ? "settings" : "campaign")
+    initialTabParam === "configuration" ? "config" : "campaign"
   );
-  
-  const isSubmitting = fetcher.state === "submitting" && fetcher.formMethod === "POST";
-  const [isSettingsDirty, setIsSettingsDirty] = useState(false);
-
-  useEffect(() => {
-    if (fetcher.data?.status === "success") {
-      shopify.toast.show("Settings saved successfully");
-      setIsSettingsDirty(false);
-    }
-  }, [fetcher.data, shopify]);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
     if (tab === "configuration") setActiveTab("config");
-    else if (tab === "settings") setActiveTab("settings");
     else if (tab === "campaign") setActiveTab("campaign");
   }, [searchParams]);
 
@@ -195,20 +181,6 @@ export default function PresetDonation() {
           Add Campaign
         </s-button>
       )}
-      {activeTab === "settings" && (
-        <s-button
-          slot="primary-action"
-          variant="primary"
-          disabled={!isSettingsDirty || isSubmitting}
-          onClick={() => {
-            const form = document.getElementById("settings-form");
-            if (form) form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
-          }}
-          {...(isSubmitting ? { loading: true } : {})}
-        >
-          {isSubmitting ? "Saving..." : (isSettingsDirty ? "Save Settings" : "No Changes")}
-        </s-button>
-      )}
 
       <div className="polaris-tabs">
         <div className="polaris-tabs-list" role="tablist">
@@ -227,12 +199,6 @@ export default function PresetDonation() {
       </div>
 
       <div className="polaris-tab-panel">
-        {activeTab === "settings" && (
-          <s-section>
-            <SettingsTab initialSettings={appSettings} shop={shop} onDirtyChange={setIsSettingsDirty} />
-          </s-section>
-        )}
-
         {activeTab === "campaign" && (
           <s-section>
             {error ? (
@@ -267,10 +233,14 @@ export default function PresetDonation() {
                     "Donation Product Page", " → Click ", "Save"
                   ],
                   onToggle: (enabled) => {
-                    const formData = new FormData();
-                    formData.append("productBlockEnabled", String(enabled));
-                    formData.append("cartBlockEnabled", String(blockConfig.cartBlockEnabled));
-                    fetcher.submit(formData, { method: "POST", action: "/api/block-config" });
+                    fetch("/api/block-config", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        productBlockEnabled: enabled,
+                        cartBlockEnabled: blockConfig.cartBlockEnabled,
+                      }),
+                    });
                   }
                 },
                 {
@@ -287,10 +257,14 @@ export default function PresetDonation() {
                     "Donation Cart Widget", " → Click ", "Save"
                   ],
                   onToggle: (enabled) => {
-                    const formData = new FormData();
-                    formData.append("productBlockEnabled", String(blockConfig.productBlockEnabled));
-                    formData.append("cartBlockEnabled", String(enabled));
-                    fetcher.submit(formData, { method: "POST", action: "/api/block-config" });
+                    fetch("/api/block-config", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        productBlockEnabled: blockConfig.productBlockEnabled,
+                        cartBlockEnabled: enabled,
+                      }),
+                    });
                   }
                 }
               ]}

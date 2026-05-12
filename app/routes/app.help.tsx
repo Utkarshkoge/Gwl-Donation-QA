@@ -177,31 +177,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 const faqs = [
     {
         question: "How many donations can a merchant create?",
-        answer: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pharetra hendrerit ut duis sem. Suspendisse potenti."
+        answer: "Depending on your plan, you can create multiple donation campaigns. Our Advanced and Pro plans allow for more extensive campaign management with multiple organizations."
     },
     {
         question: "Is it required to register the organization at your end? How many Organization does it support?",
-        answer: "Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Phasellus tincidunt elit purus, sed bibendum enim tristique eget."
+        answer: "No, you don't need to register organizations beforehand. You can simply add the organization details while creating a campaign. We support multiple organizations across different campaigns."
     },
     {
         question: "Is it required to have organizations/firms/charity institutions from specific countries?",
-        answer: "Curabitur eget lectus at lorem accumsan faucibus. In elementum lacus eget tortor pretium imperdiet. Praesent fermentum accumsan aliquet."
+        answer: "Our app is globally compatible. You can support organizations from any country, provided your store's payment gateway supports the currency used for donations."
     },
     {
         question: "Can we update the labels and descriptions of the donation option?",
-        answer: "Nullam sollicitudin interdum dolor, at bibendum justo sollicitudin tristique. Maecenas sed lectus in dui vehicula placerat ut feugiat neque."
+        answer: "Yes, you can fully customize the titles, labels, and descriptions for all donation types (Preset, Portion of Sale, and Round-Up) within the app settings."
     },
     {
         question: "Can we have the Pre-determined donation amount as options given to the customer?",
-        answer: "Aenean ullamcorper efficitur leo nec faucibus. Vestibulum suscipit velit tellus, feugiat tincidunt erat auctor ut."
+        answer: "Yes, the Preset Donation feature allows you to define a list of fixed amounts for customers to choose from, or even allow them to enter a custom amount."
     },
     {
         question: "Do we have the ability to set a minimum donation amount?",
-        answer: "Nunc at dolor ac nisi dictum commodo sed id risus. Morbi gravida nunc varius ex semper sagittis."
+        answer: "Yes, you can configure minimum donation values for Portion of Sale and Round-Up donations to ensure contributions meet your requirements."
     },
     {
         question: "Do we have the ability to add/modify the design of the Donation Option?",
-        answer: "Maecenas interdum felis eget diam gravida imperdiet ac quis risus. Nulla convallis sem sapien, et mollis felis viverra a."
+        answer: "Absolutely! You can customize the widget colors, layout, and placement through the Shopify Theme Editor and our in-app configuration tools."
     }
 ];
 
@@ -220,12 +220,12 @@ export default function HelpPage() {
                             </div>
                             <s-box paddingBlockStart="base">
                                 <s-text>
-                                    Below is the list of our Frequently Asked Questions that will help customers to understand the application features and its configuration. If your question is not listed here OR to customise anything within the app, please contact us:
+                                    Below is the list of our Frequently Asked Questions that will help you understand the application features and its configuration. If your question is not listed here or if you need custom assistance, please contact us:
                                 </s-text>
                                 <ul style={{ margin: "12px 0 0", paddingLeft: "20px", color: "#202223", fontSize: "14px", lineHeight: "1.8" }}>
-                                    <li><strong>Developed By:</strong> abc Pvt Ltd</li>
-                                    <li><strong>Email:</strong> <a href="mailto:abc@gmail.com" style={{ color: "#005bd3", textDecoration: "none" }}>abc@gmail.com</a></li>
-                                    <li><strong>Website:</strong> <a href="https://abc.com" style={{ color: "#005bd3", textDecoration: "none" }}>https://abc.com</a></li>
+                                    <li><strong>Developed By:</strong> Galaxy Weblinks</li>
+                                    <li><strong>Email:</strong> <a href="mailto:vinod.khajja@galaxyweblinks.com" style={{ color: "#005bd3", textDecoration: "none" }}>vinod.khajja@galaxyweblinks.com</a></li>
+                                    <li><strong>Website:</strong> <a href="https://www.galaxyweblinks.com/" style={{ color: "#005bd3", textDecoration: "none" }}>https://www.galaxyweblinks.com/</a></li>
                                 </ul>
                             </s-box>
 
@@ -277,16 +277,17 @@ export default function HelpPage() {
                                                             {index === 0 ? (
                                                                 <s-stack direction="block" gap="base">
                                                                     <s-stack direction="block" gap="base">
-                                                                        <s-text>In total our application have two below mentioned versions :</s-text>
+                                                                        <s-text>Our application offers three pricing plans tailored to your needs:</s-text>
                                                                         <ul style={{ paddingLeft: "16px", margin: 0, lineHeight: 1.5, fontSize: "14px", color: "#6d7175" }}>
-                                                                            <li><s-text>Basic Version: Merchant will be allowed to make Single Donation and similarly can associate with single organization.</s-text></li>
-                                                                            <li style={{ marginTop: "4px" }}><s-text>Advance Version: Merchant will be allowed to make Multiple Donations(Recommended not to exceed more then 8 for better performance) and with multiple organizations.</s-text></li>
+                                                                            <li><strong>Basic Plan:</strong> Ideal for getting started with fixed donations and receipt emails.</li>
+                                                                            <li style={{ marginTop: "4px" }}><strong>Advanced Plan:</strong> Adds percentage-based donations, refund notifications, and priority support.</li>
+                                                                            <li style={{ marginTop: "4px" }}><strong>Pro Plan:</strong> Unlocks custom branding, editable email templates, and full access to all features.</li>
                                                                         </ul>
                                                                     </s-stack>
                                                                     <s-banner tone="warning">
                                                                         <span slot="title" style={{ fontWeight: 600 }}>Important Note</span>
                                                                         <p style={{ margin: 0, fontSize: "13px" }}>
-                                                                            Please make sure not to delete the donation products which gets generated on the installation of the application otherwise it will result in showing the errors. Donation products are always available for the add/update facility which you can do from the app's admin section and also from the "Products" section of the shopify.
+                                                                            Please do not delete the donation products generated during installation, as this may cause errors. You can safely manage and update these products through the app's dashboard or Shopify's Products section.
                                                                         </p>
                                                                     </s-banner>
                                                                 </s-stack>

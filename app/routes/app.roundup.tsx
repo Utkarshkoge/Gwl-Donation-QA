@@ -926,7 +926,7 @@ export default function RoundUpDonationPage() {
                                                 )}
                                             </s-stack>
                                             <s-text color="subdued">
-                                                <span style={{ fontSize: '13px' }}>{enabled ? "The widget is currently active and visible to your customers at checkout." : "Activate the widget to start collecting round-up donations."}</span>
+                                                <span style={{ fontSize: '13px' }}>{enabled ? "The widget is currently active and visible to your customers in the cart." : "Activate the widget to start collecting round-up donations."}</span>
                                             </s-text>
                                         </s-stack>
                                         <s-button type="button" variant={enabled ? "secondary" : "primary"} onClick={() => setEnabled(!enabled)}>
@@ -1061,7 +1061,7 @@ export default function RoundUpDonationPage() {
                                                 onInput={(e: any) => setCheckboxLabelPreview(e.target.value)}
                                                 labelAccessibilityVisibility="visible"
                                             />
-                                            <s-text color="subdued">Use (amount) as a placeholder for the calculated donation amount.</s-text>
+                                            <s-text color="subdued">Use {'{amount}'} as a placeholder for the calculated donation amount.</s-text>
                                         </s-stack>
                                     </s-stack>
                                 </s-box>

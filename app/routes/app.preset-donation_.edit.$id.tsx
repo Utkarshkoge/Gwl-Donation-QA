@@ -718,6 +718,7 @@ export default function EditCampaignPage() {
         slot="secondary-action"
         onClick={handleCancel}
         disabled={isSubmitting}
+        style={{ marginBottom: '16px' }}
       >
         Cancel
       </s-button>

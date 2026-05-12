@@ -647,22 +647,27 @@ export default function AddCampaignPage() {
         slot="secondary-action"
         onClick={handleCancel}
         disabled={isSubmitting}
+        style={{ marginBottom: '16px' }}
       >
         Cancel
       </s-button>
 
       {submitSuccess && (
-        <s-banner tone="success">
-          <s-paragraph>
-            Campaign created successfully! Redirecting...
-          </s-paragraph>
-        </s-banner>
+        <div style={{ marginBottom: '16px' }}>
+          <s-banner tone="success">
+            <s-paragraph>
+              Campaign created successfully! Redirecting...
+            </s-paragraph>
+          </s-banner>
+        </div>
       )}
 
       {submitError && (
-        <s-banner tone="critical">
-          <s-paragraph>{submitError}</s-paragraph>
-        </s-banner>
+        <div style={{ marginBottom: '16px' }}>
+          <s-banner tone="critical">
+            <s-paragraph>{submitError}</s-paragraph>
+          </s-banner>
+        </div>
       )}
 
       <div style={{ marginTop: '24px' }}>

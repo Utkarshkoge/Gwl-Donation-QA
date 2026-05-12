@@ -75,6 +75,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         where: { shop },
     });
 
+    const blockConfig = await prisma.blockConfig.findUnique({
+        where: { shop },
+    });
+
     return {
         settings: settings ?? { ...DEFAULT_SETTINGS, shop },
         extensionId: extensionId || "MISSING_UUID",
@@ -82,6 +86,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         analytics: { totalDonations, ordersWithDonations, avgDonation },
         logs,
         plan: subscription?.plan ?? "basic",
+        blockConfig: blockConfig ?? { productBlockEnabled: true, cartBlockEnabled: true },
     };
 };
 
@@ -162,7 +167,7 @@ export default function PosDonation() {
     const resendFetcher = useFetcher();
     const shopify = useAppBridge();
 
-    const { settings: savedSettings, currency: currencyCode, logs, analytics, plan } = loaderData;
+    const { settings: savedSettings, currency: currencyCode, logs, analytics, plan, blockConfig } = loaderData;
 
     // Build a static generic formatter for previews
     const moneyFormatter = new Intl.NumberFormat(undefined, {
@@ -587,30 +592,48 @@ export default function PosDonation() {
                     title: "Product Page Setup",
                     description: "To add the donation section to your product page, click the button below to insert the app block.",
                     themeEditorUrl: `https://admin.shopify.com/store/${shopify.config?.shop?.replace(".myshopify.com", "") || ""}/themes/current/editor?template=product`,
-                    buttonLabel: "Open Product Editor ↗",
+                    buttonLabel: "Donation App Block on Product Page",
                     previewSvg: PRODUCT_PREVIEW_SVG,
-                    enabled: settings.enabled,
+                    enabled: blockConfig.productBlockEnabled,
                     instructions: [
                         "Go to ", "Online Store", " ➺ ", "Themes", " ➺ Click on ", "Customize",
                         " ➺ Select ", "Product Page", " Template ➺ Click ", "Add Block",
                         " ➺ Select ", "POS Donation"
                     ],
-                    onToggle: (val) => handleSettingChange("enabled", val)
+                    onToggle: (enabled) => {
+                        fetch("/api/block-config", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                productBlockEnabled: enabled,
+                                cartBlockEnabled: blockConfig.cartBlockEnabled,
+                            }),
+                        });
+                    }
                 },
                 {
                     id: "pos-cart",
                     title: "Cart Page Setup",
                     description: "To add the donation section to your cart page, click the button below to insert the app block.",
                     themeEditorUrl: `https://admin.shopify.com/store/${shopify.config?.shop?.replace(".myshopify.com", "") || ""}/themes/current/editor?template=cart`,
-                    buttonLabel: "Open Cart Editor ↗",
+                    buttonLabel: "Donation App Block on Cart Page",
                     previewSvg: CART_PREVIEW_SVG,
-                    enabled: settings.enabled,
+                    enabled: blockConfig.cartBlockEnabled,
                     instructions: [
                         "Go to ", "Online Store", " ➺ ", "Themes", " ➺ Click on ", "Customize",
                         " ➺ Select ", "Cart Page", " Template ➺ Click ", "Add Block",
                         " ➺ Select ", "POS Donation"
                     ],
-                    onToggle: (val) => handleSettingChange("enabled", val)
+                    onToggle: (enabled) => {
+                        fetch("/api/block-config", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                productBlockEnabled: blockConfig.productBlockEnabled,
+                                cartBlockEnabled: enabled,
+                            }),
+                        });
+                    }
                 }
             ]}
         />

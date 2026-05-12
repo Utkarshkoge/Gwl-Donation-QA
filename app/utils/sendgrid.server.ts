@@ -181,6 +181,13 @@ export async function sendDonationReceipt({
           <div style="font-size: 15px; font-weight: 600; color: #202223;">${paymentMethod || "Ending in card"}</div>
         </div>
       </div>
+
+      ${manageUrl ? `
+      <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #eee;">
+        <a href="${manageUrl}" style="display: inline-block; padding: 14px 32px; background-color: #1a1c1d; color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; letter-spacing: 0.3px;">Manage Subscription</a>
+        <p style="margin-top: 12px; font-size: 13px; color: #6D7175;">View, pause, or cancel your subscription from your account.</p>
+      </div>
+      ` : ""}
     </div>
     `;
     } else {
@@ -197,6 +204,11 @@ export async function sendDonationReceipt({
       <h2 style="color: #008060;">${title}</h2>
       ${recurringBadge}
       <div>${finalBody}</div>
+      ${manageUrl ? `
+      <div style="margin-top: 24px;">
+        <a href="${manageUrl}" style="display: inline-block; padding: 12px 24px; background-color: #008060; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 600;">Manage Subscription</a>
+      </div>
+      ` : ""}
       <br />
       <p style="border-top: 1px solid #eee; padding-top: 20px; font-size: 12px; color: #666;">
          If you have any questions or concerns, please reply to this email and we will get back to you as soon as we can.
