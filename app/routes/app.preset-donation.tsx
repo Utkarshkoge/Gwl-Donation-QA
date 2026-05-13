@@ -233,14 +233,13 @@ export default function PresetDonation() {
                     "Donation Product Page", " → Click ", "Save"
                   ],
                   onToggle: (enabled) => {
-                    fetch("/api/block-config", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        productBlockEnabled: enabled,
-                        cartBlockEnabled: blockConfig.cartBlockEnabled,
-                      }),
-                    });
+                    fetcher.submit(
+                      { 
+                        productBlockEnabled: String(enabled), 
+                        cartBlockEnabled: String(blockConfig.cartBlockEnabled) 
+                      }, 
+                      { method: "POST", action: "/api/block-config" }
+                    );
                   }
                 },
                 {
@@ -257,14 +256,13 @@ export default function PresetDonation() {
                     "Donation Cart Widget", " → Click ", "Save"
                   ],
                   onToggle: (enabled) => {
-                    fetch("/api/block-config", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        productBlockEnabled: blockConfig.productBlockEnabled,
-                        cartBlockEnabled: enabled,
-                      }),
-                    });
+                    fetcher.submit(
+                      { 
+                        productBlockEnabled: String(blockConfig.productBlockEnabled), 
+                        cartBlockEnabled: String(enabled) 
+                      }, 
+                      { method: "POST", action: "/api/block-config" }
+                    );
                   }
                 }
               ]}

@@ -57,6 +57,7 @@ function BlockCard({
           <h3 className="config-card__title">{title}</h3>
           <p className="config-card__description">{description}</p>
         </div>
+        <div className="config-card__toggle-wrap"><label className="config-toggle"><input type="checkbox" checked={internalEnabled} onChange={(e) => handleToggle(e.target.checked)} disabled={isSaving}/><span className="config-toggle__slider"/><span style={{ fontWeight: 500 }}>{internalEnabled ? "Enabled" : "Disabled"}</span></label></div>
       </div>
 
       <div className="config-card__body">

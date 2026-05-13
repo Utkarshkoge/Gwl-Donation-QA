@@ -36,32 +36,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 /* ─── POST: Save block config ────────────────────────────────────────────── */
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  if (request.method !== "POST") {
-    return data({ success: false, error: "Method not allowed" }, { status: 405 });
-  }
-
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await request.json();
-  } catch {
-    return data({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  let productBlockEnabled: boolean | undefined;
+  let cartBlockEnabled: boolean | undefined;
+
+  const contentType = request.headers.get("content-type");
+  if (contentType?.includes("application/json")) {
+    const body = await request.json();
+    productBlockEnabled = typeof body.productBlockEnabled === "boolean" ? body.productBlockEnabled : undefined;
+    cartBlockEnabled = typeof body.cartBlockEnabled === "boolean" ? body.cartBlockEnabled : undefined;
+  } else {
+    const formData = await request.formData();
+    const pVal = formData.get("productBlockEnabled");
+    const cVal = formData.get("cartBlockEnabled");
+    if (pVal !== null) productBlockEnabled = pVal === "true";
+    if (cVal !== null) cartBlockEnabled = cVal === "true";
   }
 
-  const productBlockEnabled =
-    typeof body.productBlockEnabled === "boolean"
-      ? body.productBlockEnabled
-      : true;
-  const cartBlockEnabled =
-    typeof body.cartBlockEnabled === "boolean" ? body.cartBlockEnabled : true;
+  // Fallback to existing if not provided
+  const existing = await prisma.blockConfig.findUnique({ where: { shop } });
+  
+  const finalProductEnabled = productBlockEnabled ?? existing?.productBlockEnabled ?? true;
+  const finalCartEnabled = cartBlockEnabled ?? existing?.cartBlockEnabled ?? true;
 
   try {
     const config = await prisma.blockConfig.upsert({
       where: { shop },
-      create: { shop, productBlockEnabled, cartBlockEnabled },
-      update: { productBlockEnabled, cartBlockEnabled },
+      create: { shop, productBlockEnabled: finalProductEnabled, cartBlockEnabled: finalCartEnabled },
+      update: { productBlockEnabled: finalProductEnabled, cartBlockEnabled: finalCartEnabled },
     });
 
     return data({ success: true, config });

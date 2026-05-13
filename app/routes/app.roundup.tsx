@@ -65,6 +65,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         }
     `);
     const currencyData = await currencyResponse.json();
+    const currency = currencyData.data?.shop?.currencyCode || "USD";
     const blockConfig = await prisma.blockConfig.findUnique({
         where: { shop: session.shop },
     });

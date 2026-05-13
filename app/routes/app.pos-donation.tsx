@@ -418,6 +418,7 @@ export default function PosDonation() {
                     </div>
                     <div style={{ display: "flex", gap: "10px" }}>
                         <button
+                            type="button"
                             onClick={handleSave}
                             disabled={isSaving || !hasChanges}
                             style={{
@@ -435,6 +436,7 @@ export default function PosDonation() {
                             {isSaving ? "Saving..." : (hasChanges ? "Save" : "No Changes")}
                         </button>
                         <button
+                            type="button"
                             onClick={() => handleSettingChange("enabled", !settings.enabled)}
                             style={{
                                 background: settings.enabled ? "#fbeae5" : "#202223",
@@ -607,14 +609,13 @@ export default function PosDonation() {
                     ],
                     onToggle: (enabled) => {
                         setLocalBlockConfig(prev => ({ ...prev, productBlockEnabled: enabled }));
-                        fetch("/api/block-config", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                productBlockEnabled: enabled,
-                                cartBlockEnabled: localBlockConfig.cartBlockEnabled,
-                            }),
-                        });
+                        fetcher.submit(
+                            { 
+                                productBlockEnabled: String(enabled), 
+                                cartBlockEnabled: String(localBlockConfig.cartBlockEnabled) 
+                            }, 
+                            { method: "POST", action: "/api/block-config" }
+                        );
                     }
                 },
                 {
@@ -632,14 +633,13 @@ export default function PosDonation() {
                     ],
                     onToggle: (enabled) => {
                         setLocalBlockConfig(prev => ({ ...prev, cartBlockEnabled: enabled }));
-                        fetch("/api/block-config", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                productBlockEnabled: localBlockConfig.productBlockEnabled,
-                                cartBlockEnabled: enabled,
-                            }),
-                        });
+                        fetcher.submit(
+                            { 
+                                productBlockEnabled: String(localBlockConfig.productBlockEnabled), 
+                                cartBlockEnabled: String(enabled) 
+                            }, 
+                            { method: "POST", action: "/api/block-config" }
+                        );
                     }
                 }
             ]}
@@ -672,6 +672,14 @@ export default function PosDonation() {
             <div style={{ marginTop: "20px" }}>
                 {selectedTab === 0 && (
                     <Form method="post" id="pos-form">
+                        <input type="hidden" name="enabled" value={String(settings.enabled)} />
+                        <input type="hidden" name="donationBasis" value={settings.donationBasis} />
+                        <input type="hidden" name="donationType" value={settings.donationType} />
+                        <input type="hidden" name="donationValue" value={String(settings.donationValue)} />
+                        <input type="hidden" name="minimumValue" value={String(settings.minimumValue)} />
+                        <input type="hidden" name="donationMessage" value={settings.donationMessage} />
+                        <input type="hidden" name="tooltipMessage" value={settings.tooltipMessage} />
+                        <input type="hidden" name="orderTag" value={settings.orderTag} />
                         {renderSettings()}
                     </Form>
                 )}
