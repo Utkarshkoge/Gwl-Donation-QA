@@ -58,7 +58,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                                     firstName
                                     lastName
                                     email
-                                    adminGraphQLApiId
+                                    id
                                 }
                                 lines(first: 1) {
                                     edges {
@@ -140,7 +140,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                                 where: { orderId: orderId },
                                 create: {
                                     shop,
-                                    customerId: contract.customer?.adminGraphQLApiId || "",
+                                    customerId: contract.customer?.id || "",
                                     orderId: orderId,
                                     status: "active",
                                     frequency: frequency,
