@@ -286,217 +286,194 @@
   </div>
 
   <script>
-    (function() {
-      var currentContractId = null;
-      var currentFrequency = null;
+    var currentContractId = null;
+    var currentFrequency = null;
 
-      async function checkSubscriptionStatus() {
-        {% if customer %}
-          var customerId = "gid://shopify/Customer/{{ customer.id }}";
-          
-          var purchaseUi = document.getElementById('donation-purchase-ui');
-          var loadingUi = document.getElementById('donation-loading');
-          var manageUi = document.getElementById('subscription-management-ui');
+    async function checkSubscriptionStatus() {
+      {% if customer %}
+        var customerId = "gid://shopify/Customer/{{ customer.id }}";
+        var shop = "{{ shop.permanent_domain }}";
+        
+        var purchaseUi = document.getElementById('donation-purchase-ui');
+        var loadingUi = document.getElementById('donation-loading');
+        var manageUi = document.getElementById('subscription-management-ui');
 
-          if (purchaseUi) purchaseUi.style.display = 'none';
-          if (loadingUi) loadingUi.style.display = 'flex';
+        if (purchaseUi) purchaseUi.style.display = 'none';
+        if (loadingUi) loadingUi.style.display = 'flex';
 
-          try {
-            var proxy = window.POS_DONATION_PROXY || "/apps/pos-donation";
-            var response = await fetch(`${proxy}/api/customer/subscription-status?customer_id=${encodeURIComponent(customerId)}`);
+        try {
+          var response = await fetch(`/apps/pos-donation/api/customer/subscription-status?customer_id=${encodeURIComponent(customerId)}`);
+          var data = await response.json();
+
+          if (loadingUi) loadingUi.style.display = 'none';
+
+          if (data.hasSubscription) {
+            currentContractId = data.contractId;
+            currentFrequency = data.frequency;
             
-            // Proxy candidate discovery if 404
-            if (response.status === 404) {
-                console.warn("[Donation Discovery] 404 in recurring block, searching...");
-                const candidates = ['/apps/pos-donation', '/apps/pos-donation-1', '/apps/pos-donation-2', '/apps/pos-donation-3'];
-                for (const p of candidates) {
-                    try {
-                        const h = await fetch(p + "/api/health");
-                        if (h.ok) {
-                            proxy = p;
-                            window.POS_DONATION_PROXY = p;
-                            response = await fetch(`${proxy}/api/customer/subscription-status?customer_id=${encodeURIComponent(customerId)}`);
-                            break;
-                        }
-                    } catch(e) {}
-                }
-            }
-
-            var data = await response.json();
-
-            if (loadingUi) loadingUi.style.display = 'none';
-
-            if (data.hasSubscription) {
-              currentContractId = data.contractId;
-              currentFrequency = data.frequency;
-              
-              if (manageUi) manageUi.style.display = 'block';
-              var planBadge = document.getElementById('current-plan-name');
-              if (planBadge) planBadge.textContent = data.planName;
-              
-              var otherPlanText = document.getElementById('other-plan-name');
-              var otherPlan = data.frequency === 'monthly' ? 'weekly' : 'monthly';
-              if (otherPlanText) otherPlanText.textContent = otherPlan.charAt(0).toUpperCase() + otherPlan.slice(1);
-              
-              setupActionListeners();
-            } else {
-              if (purchaseUi) purchaseUi.style.display = 'block';
-            }
-          } catch (e) {
-            console.error("Error checking status:", e);
-            if (loadingUi) loadingUi.style.display = 'none';
+            if (manageUi) manageUi.style.display = 'block';
+            var planBadge = document.getElementById('current-plan-name');
+            if (planBadge) planBadge.textContent = data.planName;
+            
+            var otherPlanText = document.getElementById('other-plan-name');
+            var otherPlan = data.frequency === 'monthly' ? 'weekly' : 'monthly';
+            if (otherPlanText) otherPlanText.textContent = otherPlan.charAt(0).toUpperCase() + otherPlan.slice(1);
+            
+            setupActionListeners();
+          } else {
             if (purchaseUi) purchaseUi.style.display = 'block';
           }
-        {% endif %}
-      }
+        } catch (e) {
+          console.error("Error checking status:", e);
+          if (loadingUi) loadingUi.style.display = 'none';
+          if (purchaseUi) purchaseUi.style.display = 'block';
+        }
+      {% endif %}
+    }
 
-      function setupActionListeners() {
-        var cancelBtn = document.getElementById('btn-cancel-subscription');
-        if (cancelBtn) {
-          cancelBtn.onclick = async function() {
-            if (!confirm("Are you sure you want to cancel your donation subscription?")) return;
-            this.disabled = true;
-            this.textContent = "Cancelling...";
-            try {
-              var proxy = window.POS_DONATION_PROXY || "/apps/pos-donation";
-              var response = await fetch(`${proxy}/api/customer/subscription-action`, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'CANCEL', contractId: currentContractId }),
-                headers: { 'Content-Type': 'application/json' }
-              });
-              var data = await response.json();
-              if (data.success) {
-                location.reload();
-              } else {
-                alert("Error: " + (data.error || "Unknown error"));
-                this.disabled = false;
-                this.textContent = "Cancel Donation";
-              }
-            } catch(e) {
-              alert("Network error");
+    function setupActionListeners() {
+      var cancelBtn = document.getElementById('btn-cancel-subscription');
+      if (cancelBtn) {
+        cancelBtn.onclick = async function() {
+          if (!confirm("Are you sure you want to cancel your donation subscription?")) return;
+          this.disabled = true;
+          this.textContent = "Cancelling...";
+          try {
+            var response = await fetch('/apps/pos-donation/api/customer/subscription-action', {
+              method: 'POST',
+              body: JSON.stringify({ action: 'CANCEL', contractId: currentContractId }),
+              headers: { 'Content-Type': 'application/json' }
+            });
+            var data = await response.json();
+            if (data.success) {
+              location.reload();
+            } else {
+              alert("Error: " + (data.error || "Unknown error"));
               this.disabled = false;
               this.textContent = "Cancel Donation";
             }
-          };
-        }
+          } catch(e) {
+            alert("Network error");
+            this.disabled = false;
+            this.textContent = "Cancel Donation";
+          }
+        };
+      }
 
-        var switchBtn = document.getElementById('btn-switch-plan');
-        if (switchBtn) {
-          switchBtn.onclick = async function() {
-            var newFreq = currentFrequency === 'monthly' ? 'weekly' : 'monthly';
-            if (!confirm("Switch your donation to " + newFreq + "?")) return;
-            this.disabled = true;
-            this.textContent = "Switching...";
-            try {
-              var proxy = window.POS_DONATION_PROXY || "/apps/pos-donation";
-              var response = await fetch(`${proxy}/api/customer/subscription-action`, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'SWITCH', contractId: currentContractId, newFrequency: newFreq }),
-                headers: { 'Content-Type': 'application/json' }
-              });
-              var data = await response.json();
-              if (data.success) {
-                location.reload();
-              } else {
-                alert("Error: " + (data.error || "Unknown error"));
-                this.disabled = false;
-                this.textContent = "Switch to " + newFreq;
-              }
-            } catch(e) {
-              alert("Network error");
+      var switchBtn = document.getElementById('btn-switch-plan');
+      if (switchBtn) {
+        switchBtn.onclick = async function() {
+          var newFreq = currentFrequency === 'monthly' ? 'weekly' : 'monthly';
+          if (!confirm("Switch your donation to " + newFreq + "?")) return;
+          this.disabled = true;
+          this.textContent = "Switching...";
+          try {
+            var response = await fetch('/apps/pos-donation/api/customer/subscription-action', {
+              method: 'POST',
+              body: JSON.stringify({ action: 'SWITCH', contractId: currentContractId, newFrequency: newFreq }),
+              headers: { 'Content-Type': 'application/json' }
+            });
+            var data = await response.json();
+            if (data.success) {
+              location.reload();
+            } else {
+              alert("Error: " + (data.error || "Unknown error"));
               this.disabled = false;
               this.textContent = "Switch to " + newFreq;
             }
-          };
-        }
-      }
-
-      window.updateSellingPlanUi = function() {
-        var isRecurringToggle = document.querySelector('input[name="donation_type_toggle"][value="recurring"]');
-        var planOptions = document.getElementById('recurring-plan-options');
-        if (!isRecurringToggle || !planOptions) return;
-        var isRecurring = isRecurringToggle.checked;
-        planOptions.style.display = isRecurring ? 'block' : 'none';
-        updateHiddenSellingPlanInput();
-      }
-
-      window.updateHiddenSellingPlanInput = function() {
-        var form = document.querySelector('form[action^="/cart/add"], form[action*="/cart/add"], form[id^="product-form"], form.shopify-product-form');
-        if (form) {
-          var isRecurringToggle = document.querySelector('input[name="donation_type_toggle"][value="recurring"]');
-          var isRecurring = isRecurringToggle ? isRecurringToggle.checked : false;
-          var existingInput = form.querySelector('input[name="selling_plan"]');
-          var existingPropInput = form.querySelector('input[name="properties[_selling_plan_id]"]');
-
-          if (isRecurring) {
-            var select = document.getElementById('recurring-selling-plan-select');
-            var selectedPlanId = select ? select.value : null;
-            if (selectedPlanId) {
-              if (!existingInput) {
-                existingInput = document.createElement('input');
-                existingInput.type = 'hidden';
-                existingInput.name = 'selling_plan';
-                form.appendChild(existingInput);
-              }
-              existingInput.value = selectedPlanId;
-              if (!existingPropInput) {
-                existingPropInput = document.createElement('input');
-                existingPropInput.type = 'hidden';
-                existingPropInput.name = 'properties[_selling_plan_id]';
-                form.appendChild(existingPropInput);
-              }
-              existingPropInput.value = selectedPlanId;
-            }
-          } else {
-            if (existingInput) existingInput.remove();
-            if (existingPropInput) existingPropInput.remove();
+          } catch(e) {
+            alert("Network error");
+            this.disabled = false;
+            this.textContent = "Switch to " + newFreq;
           }
-        }
-      }
-
-      // Intercept fetch for AJAX cart additions
-      (function() {
-        const originalFetch = window.fetch;
-        window.fetch = async function() {
-          let [resource, config] = arguments;
-          let urlStr = (typeof resource === 'string') ? resource : (resource instanceof Request ? resource.url : '');
-          if (urlStr.includes('/cart/add') && config && config.body) {
-            const isRecurring = document.querySelector('input[name="donation_type_toggle"][value="recurring"]')?.checked;
-            if (isRecurring) {
-              const select = document.getElementById('recurring-selling-plan-select');
-              const selectedPlanId = select ? select.value : null;
-              if (selectedPlanId) {
-                  if (typeof config.body === 'string') {
-                      try {
-                          const bodyJson = JSON.parse(config.body);
-                          if (bodyJson.items && bodyJson.items.length > 0) {
-                              bodyJson.items[0].selling_plan = selectedPlanId;
-                              bodyJson.items[0].properties = bodyJson.items[0].properties || {};
-                              bodyJson.items[0].properties['_selling_plan_id'] = selectedPlanId;
-                          } else {
-                              bodyJson.selling_plan = selectedPlanId;
-                              bodyJson.properties = bodyJson.properties || {};
-                              bodyJson.properties['_selling_plan_id'] = selectedPlanId;
-                          }
-                          config.body = JSON.stringify(bodyJson);
-                      } catch(e) {}
-                  } else if (config.body instanceof FormData) {
-                      config.body.set('selling_plan', selectedPlanId);
-                      config.body.set('properties[_selling_plan_id]', selectedPlanId);
-                  }
-              }
-            }
-          }
-          return originalFetch.apply(this, arguments);
         };
-      })();
+      }
+    }
 
-      document.addEventListener("DOMContentLoaded", function() {
-        checkSubscriptionStatus();
-        updateSellingPlanUi();
-        setInterval(updateHiddenSellingPlanInput, 1000);
-      });
+    function updateSellingPlanUi() {
+      var isRecurringToggle = document.querySelector('input[name="donation_type_toggle"][value="recurring"]');
+      var planOptions = document.getElementById('recurring-plan-options');
+      if (!isRecurringToggle || !planOptions) return;
+      var isRecurring = isRecurringToggle.checked;
+      planOptions.style.display = isRecurring ? 'block' : 'none';
+      updateHiddenSellingPlanInput();
+    }
+
+    function updateHiddenSellingPlanInput() {
+      var form = document.querySelector('form[action^="/cart/add"], form[action*="/cart/add"], form[id^="product-form"], form.shopify-product-form');
+      if (form) {
+        var isRecurringToggle = document.querySelector('input[name="donation_type_toggle"][value="recurring"]');
+        var isRecurring = isRecurringToggle ? isRecurringToggle.checked : false;
+        var existingInput = form.querySelector('input[name="selling_plan"]');
+        var existingPropInput = form.querySelector('input[name="properties[_selling_plan_id]"]');
+
+        if (isRecurring) {
+          var select = document.getElementById('recurring-selling-plan-select');
+          var selectedPlanId = select ? select.value : null;
+          if (selectedPlanId) {
+            if (!existingInput) {
+              existingInput = document.createElement('input');
+              existingInput.type = 'hidden';
+              existingInput.name = 'selling_plan';
+              form.appendChild(existingInput);
+            }
+            existingInput.value = selectedPlanId;
+            if (!existingPropInput) {
+              existingPropInput = document.createElement('input');
+              existingPropInput.type = 'hidden';
+              existingPropInput.name = 'properties[_selling_plan_id]';
+              form.appendChild(existingPropInput);
+            }
+            existingPropInput.value = selectedPlanId;
+          }
+        } else {
+          if (existingInput) existingInput.remove();
+          if (existingPropInput) existingPropInput.remove();
+        }
+      }
+    }
+
+    (function() {
+      const originalFetch = window.fetch;
+      window.fetch = async function() {
+        let [resource, config] = arguments;
+        let urlStr = (typeof resource === 'string') ? resource : (resource instanceof Request ? resource.url : '');
+        if (urlStr.includes('/cart/add') && config && config.body) {
+          const isRecurring = document.querySelector('input[name="donation_type_toggle"][value="recurring"]')?.checked;
+          if (isRecurring) {
+            const select = document.getElementById('recurring-selling-plan-select');
+            const selectedPlanId = select ? select.value : null;
+            if (selectedPlanId) {
+                if (typeof config.body === 'string') {
+                    try {
+                        const bodyJson = JSON.parse(config.body);
+                        if (bodyJson.items && bodyJson.items.length > 0) {
+                            bodyJson.items[0].selling_plan = selectedPlanId;
+                            bodyJson.items[0].properties = bodyJson.items[0].properties || {};
+                            bodyJson.items[0].properties['_selling_plan_id'] = selectedPlanId;
+                        } else {
+                            bodyJson.selling_plan = selectedPlanId;
+                            bodyJson.properties = bodyJson.properties || {};
+                            bodyJson.properties['_selling_plan_id'] = selectedPlanId;
+                        }
+                        config.body = JSON.stringify(bodyJson);
+                    } catch(e) {}
+                } else if (config.body instanceof FormData) {
+                    config.body.set('selling_plan', selectedPlanId);
+                    config.body.set('properties[_selling_plan_id]', selectedPlanId);
+                }
+            }
+          }
+        }
+        return originalFetch.apply(this, arguments);
+      };
     })();
+
+    document.addEventListener("DOMContentLoaded", function() {
+      checkSubscriptionStatus();
+      updateSellingPlanUi();
+      setInterval(updateHiddenSellingPlanInput, 1000);
+    });
   </script>
 {% endif %}
 
