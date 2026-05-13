@@ -286,7 +286,7 @@
 
   // Support all variants including cents/paisa
   VARIANTS.sort((a, b) => b.price - a.price);
-  const ONE_RUPEE = VARIANTS.find(v => v.price === 1);
+  const ONE_RUPEE = VARIANTS.find(v => Math.round(v.price) === 1) || VARIANTS[0];
 
   let settings = {};
   try {
@@ -346,23 +346,19 @@
       if (this.checked) {
         await removeType("roundup");
         
-        if (!ONE_RUPEE) {
-            alert("Donation product not set up correctly.");
-            this.checked = false;
-            return;
+        if (ONE_RUPEE) {
+            await fetch('/cart/add.js', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                items: [{
+                  id: ONE_RUPEE.id,
+                  quantity: Math.round(donationAmount),
+                  properties: { type: "roundup" }
+                }]
+              })
+            });
         }
-
-        await fetch('/cart/add.js', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            items: [{
-              id: ONE_RUPEE.id,
-              quantity: Math.round(donationAmount),
-              properties: { type: "roundup" }
-            }]
-          })
-        });
       } else {
         await removeType("roundup");
       }
