@@ -2,154 +2,154 @@ import sgMail from '@sendgrid/mail';
 import db from "../db.server";
 
 interface DonationReceiptArgs {
-    email: string;
-    name: string;
-    amount: string;
-    orderNumber: string;
-    type?: string;
-    shop: string;
-    frequency?: string;
-    nextBillingDate?: string;
-    donationName?: string;
-    shippingAddress?: string;
-    billingAddress?: string;
-    manageUrl?: string;
-    productImage?: string;
-    productTitle?: string;
-    paymentMethod?: string;
+  email: string;
+  name: string;
+  amount: string;
+  orderNumber: string;
+  type?: string;
+  shop: string;
+  frequency?: string;
+  nextBillingDate?: string;
+  donationName?: string;
+  shippingAddress?: string;
+  billingAddress?: string;
+  manageUrl?: string;
+  productImage?: string;
+  productTitle?: string;
+  paymentMethod?: string;
 }
 
 export async function sendDonationReceipt({
-    email,
-    name,
-    amount,
-    orderNumber,
-    type = "receipt",
-    shop,
-    frequency,
-    nextBillingDate,
-    donationName,
-    shippingAddress,
-    billingAddress,
-    manageUrl,
-    productImage,
-    productTitle,
-    paymentMethod,
+  email,
+  name,
+  amount,
+  orderNumber,
+  type = "receipt",
+  shop,
+  frequency,
+  nextBillingDate,
+  donationName,
+  shippingAddress,
+  billingAddress,
+  manageUrl,
+  productImage,
+  productTitle,
+  paymentMethod,
 }: DonationReceiptArgs) {
-    // Defensive environment variable parsing
-    const apiKey = (process.env.SENDGRID_API_KEY || "").trim();
-    let verifiedFromEmail = (process.env.SENDGRID_FROM_EMAIL || "").trim();
-    if (!verifiedFromEmail) verifiedFromEmail = "donations@yourstore.com";
+  // Defensive environment variable parsing
+  const apiKey = (process.env.SENDGRID_API_KEY || "").trim();
+  let verifiedFromEmail = (process.env.SENDGRID_FROM_EMAIL || "").trim();
+  if (!verifiedFromEmail) verifiedFromEmail = "donations@yourstore.com";
 
-    if (!apiKey) {
-        console.error("[sendDonationReceipt] SENDGRID_API_KEY is missing from environment variables");
-        return { success: false, error: "Missing API Key" };
+  if (!apiKey) {
+    console.error("[sendDonationReceipt] SENDGRID_API_KEY is missing from environment variables");
+    return { success: false, error: "Missing API Key" };
+  }
+
+  sgMail.setApiKey(apiKey);
+
+  let settings = null;
+  try {
+    settings = await db.emailSettings.findUnique({ where: { shop } });
+  } catch (dbError) {
+    console.error("[sendDonationReceipt] Error fetching email settings:", dbError);
+  }
+
+  // Defaults
+  let replyToEmail = verifiedFromEmail;
+  let ccEmail = "";
+  let notifyMerchant = false;
+  let subjectTemplate = `Thank you for your donation (Order ${orderNumber})`;
+  let bodyTemplate = `We've received your generous donation of <strong>${amount}</strong> along with your order ${orderNumber}.`;
+
+  if (settings) {
+    replyToEmail = settings.contactEmail || replyToEmail;
+    ccEmail = settings.ccEmail || "";
+    notifyMerchant = (settings as any).notifyMerchantOnSubscriptionChange || false;
+
+    if (type === "refund") {
+      subjectTemplate = settings.refundSubject;
+      bodyTemplate = settings.refundBody;
+    } else if (type === "cancellation") {
+      subjectTemplate = settings.cancelSubject;
+      bodyTemplate = settings.cancelBody;
+    } else if (type === "pause") {
+      subjectTemplate = (settings as any).pauseSubject || "Subscription Paused";
+      bodyTemplate = (settings as any).pauseBody || "Your subscription has been paused.";
+    } else if (type === "resume") {
+      subjectTemplate = (settings as any).resumeSubject || "Subscription Resumed";
+      bodyTemplate = (settings as any).resumeBody || "Your subscription has been resumed.";
+    } else if (type === "reminder") {
+      subjectTemplate = settings.reminderSubject || "Upcoming Donation Reminder";
+      bodyTemplate = settings.reminderBody;
+    } else {
+      subjectTemplate = settings.receiptSubject;
+      bodyTemplate = settings.receiptBody;
     }
+  }
 
-    sgMail.setApiKey(apiKey);
-
-    let settings = null;
-    try {
-        settings = await db.emailSettings.findUnique({ where: { shop } });
-    } catch (dbError) {
-        console.error("[sendDonationReceipt] Error fetching email settings:", dbError);
-    }
-
-    // Defaults
-    let replyToEmail = verifiedFromEmail;
-    let ccEmail = "";
-    let notifyMerchant = false;
-    let subjectTemplate = `Thank you for your donation (Order ${orderNumber})`;
-    let bodyTemplate = `We've received your generous donation of <strong>${amount}</strong> along with your order ${orderNumber}.`;
-
-    if (settings) {
-        replyToEmail = settings.contactEmail || replyToEmail;
-        ccEmail = settings.ccEmail || "";
-        notifyMerchant = (settings as any).notifyMerchantOnSubscriptionChange || false;
-
-        if (type === "refund") {
-            subjectTemplate = settings.refundSubject;
-            bodyTemplate = settings.refundBody;
-        } else if (type === "cancellation") {
-            subjectTemplate = settings.cancelSubject;
-            bodyTemplate = settings.cancelBody;
-        } else if (type === "pause") {
-            subjectTemplate = (settings as any).pauseSubject || "Subscription Paused";
-            bodyTemplate = (settings as any).pauseBody || "Your subscription has been paused.";
-        } else if (type === "resume") {
-            subjectTemplate = (settings as any).resumeSubject || "Subscription Resumed";
-            bodyTemplate = (settings as any).resumeBody || "Your subscription has been resumed.";
-        } else if (type === "reminder") {
-            subjectTemplate = settings.reminderSubject || "Upcoming Donation Reminder";
-            bodyTemplate = settings.reminderBody;
-        } else {
-            subjectTemplate = settings.receiptSubject;
-            bodyTemplate = settings.receiptBody;
-        }
-    }
-
-    const replaceVariables = (str: string) => {
-        const smartReplace = (html: string, variable: string, value: string) => {
-            const regex = new RegExp('\\{\\{(\\s*<[^>]*>\\s*)*' + variable + '(\\s*<[^>]*>\\s*)*\\}\\}', 'gi');
-            return html.replace(regex, value);
-        };
-
-        let res = str;
-        res = smartReplace(res, "first_name", name.split(" ")[0] || "");
-        res = smartReplace(res, "last_name", name.split(" ").slice(1).join(" ") || "");
-        res = smartReplace(res, "email", email);
-        res = smartReplace(res, "currency", "$");
-        res = smartReplace(res, "amount", amount);
-        res = smartReplace(res, "price", amount);
-        res = smartReplace(res, "donation_name", donationName || productTitle || "Charity Donation");
-        res = smartReplace(res, "orderNumber", orderNumber);
-        res = smartReplace(res, "date", new Date().toLocaleDateString());
-        res = smartReplace(res, "frequency", frequency || "One-time");
-        res = smartReplace(res, "nextBillingDate", nextBillingDate || "N/A");
-        res = smartReplace(res, "paymentMethod", paymentMethod || "Ending in card");
-
-        return res;
+  const replaceVariables = (str: string) => {
+    const smartReplace = (html: string, variable: string, value: string) => {
+      const regex = new RegExp('\\{\\{(\\s*<[^>]*>\\s*)*' + variable + '(\\s*<[^>]*>\\s*)*\\}\\}', 'gi');
+      return html.replace(regex, value);
     };
 
-    const finalSubject = replaceVariables(subjectTemplate);
-    const finalBody = replaceVariables(bodyTemplate);
+    let res = str;
+    res = smartReplace(res, "first_name", name.split(" ")[0] || "");
+    res = smartReplace(res, "last_name", name.split(" ").slice(1).join(" ") || "");
+    res = smartReplace(res, "email", email);
+    res = smartReplace(res, "currency", "$");
+    res = smartReplace(res, "amount", amount);
+    res = smartReplace(res, "price", amount);
+    res = smartReplace(res, "donation_name", donationName || productTitle || "Charity Donation");
+    res = smartReplace(res, "orderNumber", orderNumber);
+    res = smartReplace(res, "date", new Date().toLocaleDateString());
+    res = smartReplace(res, "frequency", frequency || "One-time");
+    res = smartReplace(res, "nextBillingDate", nextBillingDate || "N/A");
+    res = smartReplace(res, "paymentMethod", paymentMethod || "Ending in card");
 
-    let title = "Donation Receipt";
-    if (type === "refund") title = "Donation Refunded";
-    else if (type === "cancellation") title = "Donation Cancelled";
-    else if (type === "pause") title = "Subscription Paused";
-    else if (type === "resume") title = "Subscription Resumed";
-    else if (type === "reminder") title = "Upcoming Donation Reminder";
+    return res;
+  };
 
-    const isRecurring = frequency === "Monthly" || frequency === "Weekly";
+  const finalSubject = replaceVariables(subjectTemplate);
+  const finalBody = replaceVariables(bodyTemplate);
 
-    let htmlContent = "";
+  let title = "Donation Receipt";
+  if (type === "refund") title = "Donation Refunded";
+  else if (type === "cancellation") title = "Donation Cancelled";
+  else if (type === "pause") title = "Subscription Paused";
+  else if (type === "resume") title = "Subscription Resumed";
+  else if (type === "reminder") title = "Upcoming Donation Reminder";
 
-    const isValidLogo = (url: string | null | undefined) => {
-        if (!url) return false;
-        const trimmed = url.trim();
-        return trimmed !== "" && trimmed !== "null" && (trimmed.startsWith("http") || trimmed.startsWith("data:image") || trimmed.startsWith("//"));
-    };
+  const isRecurring = frequency === "Monthly" || frequency === "Weekly";
 
-    const getLogoUrl = (url: string | null | undefined) => {
-        if (!url) return "";
-        const trimmed = url.trim();
-        if (trimmed.startsWith("//")) return "https:" + trimmed;
-        return trimmed;
-    };
+  let htmlContent = "";
 
-    if (isRecurring && (type === "receipt" || type === "pause" || type === "resume" || type === "cancellation" || type === "reminder")) {
-        const statusHeader = type === "pause" ? "Subscription Paused" :
-            type === "resume" ? "Subscription Resumed" :
-                type === "cancellation" ? "Subscription Cancelled" : 
-                type === "reminder" ? "Upcoming Donation Reminder" : "Welcome Aboard";
-        const statusSubtext = type === "pause" ? "Your subscription has been paused. You can resume it at any time from your account." :
-            type === "resume" ? "Your subscription has been resumed. Thank you for your continued support!" :
-                type === "cancellation" ? "Your subscription has been cancelled. We're sorry to see you go." :
-                type === "reminder" ? "This is a friendly reminder of your upcoming donation charge." :
-                    "Thank you for your subscription purchase!";
+  const isValidLogo = (url: string | null | undefined) => {
+    if (!url) return false;
+    const trimmed = url.trim();
+    return trimmed !== "" && trimmed !== "null" && (trimmed.startsWith("http") || trimmed.startsWith("data:image") || trimmed.startsWith("//"));
+  };
 
-        htmlContent = `
+  const getLogoUrl = (url: string | null | undefined) => {
+    if (!url) return "";
+    const trimmed = url.trim();
+    if (trimmed.startsWith("//")) return "https:" + trimmed;
+    return trimmed;
+  };
+
+  if (isRecurring && (type === "receipt" || type === "pause" || type === "resume" || type === "cancellation" || type === "reminder")) {
+    const statusHeader = type === "pause" ? "Subscription Paused" :
+      type === "resume" ? "Subscription Resumed" :
+        type === "cancellation" ? "Subscription Cancelled" :
+          type === "reminder" ? "Upcoming Donation Reminder" : "Welcome Aboard";
+    const statusSubtext = type === "pause" ? "Your subscription has been paused. You can resume it at any time from your account." :
+      type === "resume" ? "Your subscription has been resumed. Thank you for your continued support!" :
+        type === "cancellation" ? "Your subscription has been cancelled. We're sorry to see you go." :
+          type === "reminder" ? "This is a friendly reminder of your upcoming donation charge." :
+            "Thank you for your subscription purchase!";
+
+    htmlContent = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6; background-color: #fff; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
       <div style="margin-bottom: 24px;">
         ${isValidLogo(settings?.logoUrl) ? `<img src="${getLogoUrl(settings!.logoUrl)}" alt="Logo" style="max-height: 50px; display: block;" />` : ""}
@@ -203,15 +203,15 @@ export async function sendDonationReceipt({
       ` : ""}
     </div>
     `;
-    } else {
-        const recurringBadge = (frequency && frequency !== "One-time")
-            ? `<div style="margin-bottom: 12px; padding: 8px 14px; background: #e8f5e9; border-radius: 6px; display: inline-block; font-size: 13px; color: #2e7d32;">
+  } else {
+    const recurringBadge = (frequency && frequency !== "One-time")
+      ? `<div style="margin-bottom: 12px; padding: 8px 14px; background: #e8f5e9; border-radius: 6px; display: inline-block; font-size: 13px; color: #2e7d32;">
           <strong>${frequency} Donation</strong>
           ${nextBillingDate ? ` &mdash; next charge on <strong>${nextBillingDate}</strong>` : ""}
          </div>`
-            : "";
+      : "";
 
-        htmlContent = `
+    htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6;">
       ${isValidLogo(settings?.logoUrl) ? `<div style="margin-bottom: 24px;"><img src="${getLogoUrl(settings!.logoUrl)}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
       <h2 style="color: #008060;">${title}</h2>
@@ -228,78 +228,78 @@ export async function sendDonationReceipt({
       </p>
     </div>
     `;
+  }
+
+  const msg: any = {
+    to: email,
+    from: verifiedFromEmail,
+    replyTo: replyToEmail,
+    subject: finalSubject,
+    html: htmlContent,
+  };
+
+  if (ccEmail) msg.cc = ccEmail;
+
+  console.log(`[sendDonationReceipt] Final payload From: ${verifiedFromEmail}, To: ${email}, Subject: ${finalSubject}`);
+
+  try {
+    await sgMail.send(msg);
+
+    // ── Merchant Notification Copy ──
+    // Send a copy to the merchant if enabled, but don't let it crash the main flow
+    if (notifyMerchant && type !== "receipt" && (type === "pause" || type === "resume" || type === "cancellation" || type === "reminder")) {
+      try {
+        const merchantMsg = {
+          ...msg,
+          to: replyToEmail, // Send to merchant's contact email
+          replyTo: email,    // Reply-to goes to customer
+          subject: `[Merchant Copy] ${finalSubject}`
+        };
+        await sgMail.send(merchantMsg);
+        console.log(`[sendDonationReceipt] Merchant copy sent to ${replyToEmail}`);
+      } catch (merchantError) {
+        console.error("[sendDonationReceipt] Failed to send merchant copy:", merchantError);
+      }
     }
 
-    const msg: any = {
-        to: email,
-        from: verifiedFromEmail,
-        replyTo: replyToEmail,
-        subject: finalSubject,
-        html: htmlContent,
-    };
-
-    if (ccEmail) msg.cc = ccEmail;
-
-    console.log(`[sendDonationReceipt] Final payload From: ${verifiedFromEmail}, To: ${email}, Subject: ${finalSubject}`);
-
-    try {
-        await sgMail.send(msg);
-
-        // ── Merchant Notification Copy ──
-        // Send a copy to the merchant if enabled, but don't let it crash the main flow
-        if (notifyMerchant && type !== "receipt" && (type === "pause" || type === "resume" || type === "cancellation" || type === "reminder")) {
-            try {
-                const merchantMsg = {
-                    ...msg,
-                    to: replyToEmail, // Send to merchant's contact email
-                    replyTo: email,    // Reply-to goes to customer
-                    subject: `[Merchant Copy] ${finalSubject}`
-                };
-                await sgMail.send(merchantMsg);
-                console.log(`[sendDonationReceipt] Merchant copy sent to ${replyToEmail}`);
-            } catch (merchantError) {
-                console.error("[sendDonationReceipt] Failed to send merchant copy:", merchantError);
-            }
-        }
-
-        return { success: true };
-    } catch (error: any) {
-        console.error("SendGrid rejected payload or failed:", error);
-        let errorMsg = String(error);
-        if (error.response?.body) {
-            const body = error.response.body;
-            console.log("SendGrid Error Body:", JSON.stringify(body, null, 2));
-            if (body.errors && body.errors.length > 0) {
-                errorMsg = body.errors[0].message;
-            }
-        }
-        return { success: false, error: errorMsg };
+    return { success: true };
+  } catch (error: any) {
+    console.error("SendGrid rejected payload or failed:", error);
+    let errorMsg = String(error);
+    if (error.response?.body) {
+      const body = error.response.body;
+      console.log("SendGrid Error Body:", JSON.stringify(body, null, 2));
+      if (body.errors && body.errors.length > 0) {
+        errorMsg = body.errors[0].message;
+      }
     }
+    return { success: false, error: errorMsg };
+  }
 }
 
 export async function sendPlanChangeConfirmation({
-    shop,
-    planName,
-    email,
+  shop,
+  planName,
+  email,
 }: {
-    shop: string;
-    planName: string;
-    email: string;
+  shop: string;
+  planName: string;
+  email: string;
 }) {
-    const rawApiKey = process.env.SENDGRID_API_KEY || "";
-    const apiKey = rawApiKey.split("SHOPIFY")[0].trim();
+  const rawApiKey = process.env.SENDGRID_API_KEY || "";
+  const apiKey = rawApiKey.split("SHOPIFY")[0].trim();
 
-    const rawFromEmail = process.env.SENDGRID_FROM_EMAIL || "";
-    let verifiedFromEmail = rawFromEmail.split("SHOPIFY")[0].trim() || "donations@yourstore.com";
+  const rawFromEmail = process.env.SENDGRID_FROM_EMAIL || "";
+  let verifiedFromEmail = rawFromEmail.split("SHOPIFY")[0].trim() || "donations@yourstore.com";
 
-    if (!apiKey) {
-        console.error("SENDGRID_API_KEY is missing");
-        return { success: false };
-    }
+  if (!apiKey) {
+    console.error("SENDGRID_API_KEY is missing");
+    return { success: false };
+  }
 
-    sgMail.setApiKey(apiKey);
+  sgMail.setApiKey(apiKey);
 
-    const htmlContent = `
+  const htmlContent = `
   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6; background-color: #fff; padding: 24px; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
     <div style="text-align: center; margin-bottom: 32px;">
       <div style="font-size: 32px; margin-bottom: 8px;">🚀</div>
@@ -325,18 +325,18 @@ export async function sendPlanChangeConfirmation({
   </div>
   `;
 
-    const msg = {
-        to: email,
-        from: verifiedFromEmail,
-        subject: `Your Donations: Subscriptions & Receipts plan has been updated to ${planName.charAt(0).toUpperCase() + planName.slice(1)}`,
-        html: htmlContent,
-    };
+  const msg = {
+    to: email,
+    from: verifiedFromEmail,
+    subject: `Your Donations: Subscriptions & Receipts plan has been updated to ${planName.charAt(0).toUpperCase() + planName.slice(1)}`,
+    html: htmlContent,
+  };
 
-    try {
-        await sgMail.send(msg);
-        return { success: true };
-    } catch (error) {
-        console.error("Failed to send plan change email:", error);
-        return { success: false };
-    }
+  try {
+    await sgMail.send(msg);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to send plan change email:", error);
+    return { success: false };
+  }
 }

@@ -319,18 +319,23 @@
     }
   }
 
-  function breakAmount(amount) {
-    let remaining = amount;
+  function breakAmount(amount, type) {
+    let remainingCents = Math.round(amount * 100);
     let items = [];
-    for (let v of VARIANTS) {
-      let qty = Math.floor(remaining / v.price);
+    const sortedVariants = [...VARIANTS].sort((a, b) => b.price - a.price);
+    
+    for (let v of sortedVariants) {
+      const vPriceCents = Math.round(v.price * 100);
+      if (vPriceCents <= 0) continue;
+      
+      let qty = Math.floor(remainingCents / vPriceCents);
       if (qty > 0) {
         items.push({
           id: v.id,
           quantity: qty,
-          properties: { type: "extra" }
+          properties: { type: type }
         });
-        remaining = +(remaining - qty * v.price).toFixed(2);
+        remainingCents -= qty * vPriceCents;
       }
     }
     return items;
@@ -363,17 +368,16 @@
     checkbox.addEventListener("change", async function () {
       if (this.checked) {
         await removeType("roundup");
-        const quantity = Math.round(donationAmount / ONE_RUPEE.price);
+        const items = breakAmount(donationAmount, "roundup");
+        if (items.length === 0) {
+            console.error("[RoundUp] No variants found.");
+            this.checked = false;
+            return;
+        }
         await fetch('/cart/add.js', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            items: [{
-              id: ONE_RUPEE.id,
-              quantity: quantity,
-              properties: { type: "roundup" }
-            }]
-          })
+          body: JSON.stringify({ items })
         });
       } else {
         await removeType("roundup");
@@ -389,7 +393,7 @@
           return;
         }
         await removeType("extra");
-        const items = breakAmount(value);
+        const items = breakAmount(value, "extra");
         await fetch('/cart/add.js', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
