@@ -306,9 +306,12 @@
         donationLine = findDonationLine(cart, numericVariantIds);
 
         // Hide if cart has no real (non-donation) items
-        if (!hasRealCartItems(cart)) {
+        const showOnEmptyCart = container.dataset.showOnEmptyCart === "true";
+        if (!hasRealCartItems(cart) && !showOnEmptyCart) {
           container.style.display = "none";
           return;
+        } else {
+          container.style.display = "";
         }
       } catch (_) {
         // Non-fatal — render add mode
@@ -573,7 +576,8 @@
       try {
         // Early empty-cart check: hide immediately if no real items in cart
         const cart = await getCart();
-        if (!hasRealCartItems(cart)) {
+        const showOnEmptyCart = container.dataset.showOnEmptyCart === "true";
+        if (!hasRealCartItems(cart) && !showOnEmptyCart) {
           container.style.display = "none";
           if (loadingEl) loadingEl.style.display = "none";
           continue;
