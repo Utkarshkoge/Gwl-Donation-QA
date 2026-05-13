@@ -28,6 +28,8 @@ interface EmailSettings {
     pauseBody: string;
     resumeSubject: string;
     resumeBody: string;
+    reminderSubject: string;
+    reminderBody: string;
 }
 
 const DEFAULT_SETTINGS: EmailSettings = {
@@ -128,6 +130,15 @@ const DEFAULT_SETTINGS: EmailSettings = {
 <p>We are glad to have you back!</p>
 
 <p>Thank you for your continued support ❤️</p>`,
+    reminderSubject: "Upcoming Donation Reminder: {{amount}}",
+    reminderBody: `<h2 style="color:#6c4a79;">Donation Reminder ❤️</h2>
+<p>Hello <strong>{{first_name}}</strong>,</p>
+<p>This is a friendly reminder that your next donation of <strong>{{currency}}{{amount}}</strong> for <strong>{{donation_name}}</strong> is scheduled for {{nextBillingDate}}.</p>
+<hr />
+<p><strong>Frequency:</strong> {{frequency}}</p>
+<p><strong>Amount:</strong> {{currency}}{{amount}}</p>
+<hr />
+<p>Thank you for your continued support! You can manage your subscription at any time using the link below.</p>`,
 };
 
 // ─── Loader ─────────────────────────────────────────────────
@@ -170,6 +181,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         pauseBody: (formData.get("pauseBody") as string) || DEFAULT_SETTINGS.pauseBody,
         resumeSubject: (formData.get("resumeSubject") as string) || DEFAULT_SETTINGS.resumeSubject,
         resumeBody: (formData.get("resumeBody") as string) || DEFAULT_SETTINGS.resumeBody,
+        reminderSubject: (formData.get("reminderSubject") as string) || DEFAULT_SETTINGS.reminderSubject,
+        reminderBody: (formData.get("reminderBody") as string) || DEFAULT_SETTINGS.reminderBody,
     };
 
     await prisma.emailSettings.upsert({
@@ -201,6 +214,8 @@ export default function EmailSettingsPage() {
         pauseBody: savedSettings.pauseBody || DEFAULT_SETTINGS.pauseBody,
         resumeSubject: savedSettings.resumeSubject || DEFAULT_SETTINGS.resumeSubject,
         resumeBody: savedSettings.resumeBody || DEFAULT_SETTINGS.resumeBody,
+        reminderSubject: savedSettings.reminderSubject || DEFAULT_SETTINGS.reminderSubject,
+        reminderBody: savedSettings.reminderBody || DEFAULT_SETTINGS.reminderBody,
     });
 
     // Snapshot of initial settings for dirty-state detection
@@ -373,6 +388,7 @@ export default function EmailSettingsPage() {
                                             { id: "receipt", label: "Receipt Template" },
                                             { id: "refund", label: "Refund Template" },
                                             { id: "cancel", label: "Cancellation Template" },
+                                            { id: "reminder", label: "Reminder Template" },
                                         ].map((tab) => (
                                             <button
                                                 key={tab.id}
@@ -390,7 +406,8 @@ export default function EmailSettingsPage() {
                                 {/* Dynamic Template Content */}
                                 <s-stack direction="block" gap="base">
                                     {(selectedTab === "refund" && !checkFeatureAccess(plan, "canSendRefundEmail")) ||
-                                        (selectedTab === "cancel" && !checkFeatureAccess(plan, "canSendCancelEmail")) ? (
+                                        (selectedTab === "cancel" && !checkFeatureAccess(plan, "canSendCancelEmail")) ||
+                                        (selectedTab === "reminder" && !checkFeatureAccess(plan, "canSendReminders")) ? (
                                         <s-box padding="large-200" background="subdued" borderRadius="base" borderWidth="base">
                                             <s-stack direction="block" gap="base">
                                                 <div style={{ textAlign: "center", width: "100%" }}>
@@ -398,7 +415,7 @@ export default function EmailSettingsPage() {
                                                     <s-box padding-block-start="base">
                                                         <s-text color="subdued">
                                                             The {selectedTab} email feature is available on the
-                                                            <strong> {selectedTab === "refund" ? "Advanced" : "Pro"}</strong> plan and above.
+                                                            <strong> {selectedTab === "refund" ? "Advanced" : selectedTab === "reminder" ? "Advanced" : "Pro"}</strong> plan and above.
                                                         </s-text>
                                                     </s-box>
                                                     <s-box padding-block-start="base">
@@ -417,12 +434,14 @@ export default function EmailSettingsPage() {
                                                 value={
                                                     selectedTab === "receipt" ? settings.receiptSubject :
                                                         selectedTab === "refund" ? settings.refundSubject :
-                                                            settings.cancelSubject
+                                                            selectedTab === "cancel" ? settings.cancelSubject :
+                                                                settings.reminderSubject
                                                 }
                                                 onInput={(e: any) => handleSettingChange(
                                                     selectedTab === "receipt" ? "receiptSubject" :
                                                         selectedTab === "refund" ? "refundSubject" :
-                                                            "cancelSubject",
+                                                            selectedTab === "cancel" ? "cancelSubject" :
+                                                                "reminderSubject",
                                                     e.target.value
                                                 )}
                                             />
@@ -459,7 +478,8 @@ export default function EmailSettingsPage() {
                                                     onChange={(value: string) => handleSettingChange(
                                                         selectedTab === "receipt" ? "receiptBody" :
                                                             selectedTab === "refund" ? "refundBody" :
-                                                                "cancelBody",
+                                                                selectedTab === "cancel" ? "cancelBody" :
+                                                                    "reminderBody",
                                                         value
                                                     )}
                                                 />

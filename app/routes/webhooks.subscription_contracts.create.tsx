@@ -26,6 +26,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 },
             });
             console.log(`[SubscriptionContract] Linked contract ${contractId} to order ${originOrderId}`);
+
+            // Also create/update the subscription record for reminders
+            try {
+                const lines = contract.lines?.edges?.map((e: any) => e.node) || [];
+                const totalAmount = lines.reduce((sum: number, line: any) => {
+                    return sum + (parseFloat(line.currentPrice?.amount ?? "0") * (line.quantity ?? 1));
+                }, 0);
+                const currency = contract.currencyCode || lines[0]?.currentPrice?.currencyCode || "USD";
+                const frequency = lines[0]?.sellingPlanName?.toLowerCase().includes("month") ? "monthly" : "weekly";
+
+                await db.subscription.upsert({
+                    where: { orderId: contract.origin_order?.name || originOrderId },
+                    create: {
+                        shop,
+                        customerId: contract.customer?.admin_graphql_api_id || "",
+                        orderId: contract.origin_order?.name || originOrderId,
+                        status: "active",
+                        frequency: frequency,
+                        amount: totalAmount,
+                        currency: currency,
+                        nextBillingDate: new Date(contract.nextBillingDate),
+                    },
+                    update: {
+                        status: "active",
+                        nextBillingDate: new Date(contract.nextBillingDate),
+                    }
+                });
+            } catch (subErr) {
+                console.error("[SubscriptionContract] Error creating subscription record:", subErr);
+            }
         } else {
             console.log(`[SubscriptionContract] Created contract ${contractId} — no origin order to link`);
         }

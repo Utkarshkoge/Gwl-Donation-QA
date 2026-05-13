@@ -107,23 +107,25 @@ model PosDonationLog {
 }
 
 model EmailSettings {
-  id             String   @id @default(uuid())
-  shop           String   @unique
-  contactEmail   String   @default("donations@yourstore.com")
-  ccEmail        String?  @default("")
-  receiptSubject String   @default("Thank you for your donation")
-  receiptBody    String   @default("We've received your generous donation of <strong>{{currency}}{{amount}}</strong> along with your order {{orderNumber}}.")
-  refundSubject  String   @default("Donation Refund Confirmation")
-  refundBody     String   @default("We're writing to confirm that the donation of <strong>{{currency}}{{amount}}</strong> associated with order {{orderNumber}} has been refunded.")
-  cancelSubject  String   @default("Donation Cancellation")
-  cancelBody     String   @default("The donation of <strong>{{currency}}{{amount}}</strong> associated with your cancelled order {{orderNumber}} has also been marked as cancelled.")
-  pauseSubject   String   @default("Subscription Paused")
-  pauseBody      String   @default("Your subscription for <strong>{{donation_name}}</strong> has been paused.")
-  resumeSubject  String   @default("Subscription Resumed")
-  resumeBody     String   @default("Your subscription for <strong>{{donation_name}}</strong> has been resumed.")
-  logoUrl        String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(uuid())
+  shop            String   @unique
+  contactEmail    String   @default("donations@yourstore.com")
+  ccEmail         String?  @default("")
+  receiptSubject  String   @default("Thank you for your donation")
+  receiptBody     String   @default("We've received your generous donation of <strong>{{currency}}{{amount}}</strong> along with your order {{orderNumber}}.")
+  refundSubject   String   @default("Donation Refund Confirmation")
+  refundBody      String   @default("We're writing to confirm that the donation of <strong>{{currency}}{{amount}}</strong> associated with order {{orderNumber}} has been refunded.")
+  cancelSubject   String   @default("Donation Cancellation")
+  cancelBody      String   @default("The donation of <strong>{{currency}}{{amount}}</strong> associated with your cancelled order {{orderNumber}} has also been marked as cancelled.")
+  pauseSubject    String   @default("Subscription Paused")
+  pauseBody       String   @default("Your subscription for <strong>{{donation_name}}</strong> has been paused.")
+  resumeSubject   String   @default("Subscription Resumed")
+  resumeBody      String   @default("Your subscription for <strong>{{donation_name}}</strong> has been resumed.")
+  reminderSubject String   @default("Upcoming Donation Reminder: {{amount}}")
+  reminderBody    String   @default("This is a friendly reminder that your next donation of <strong>{{currency}}{{amount}}</strong> for <strong>{{donation_name}}</strong> is scheduled for {{nextBillingDate}}.")
+  logoUrl         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model PlanSubscription {
@@ -235,8 +237,10 @@ model subscription {
   frequency       String
   amount          Float
   currency        String
-  nextBillingDate DateTime
-  createdAt       DateTime @default(now())
+  nextBillingDate     DateTime
+  lastReminderDate    DateTime?
+  reminderSentForDate DateTime?
+  createdAt           DateTime  @default(now())
 }
 
 model CustomerSubscription {

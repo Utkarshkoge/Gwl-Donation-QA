@@ -72,6 +72,9 @@ export async function sendDonationReceipt({
         } else if (type === "resume") {
             subjectTemplate = (settings as any).resumeSubject || "Subscription Resumed";
             bodyTemplate = (settings as any).resumeBody || "Your subscription has been resumed.";
+        } else if (type === "reminder") {
+            subjectTemplate = settings.reminderSubject || "Upcoming Donation Reminder";
+            bodyTemplate = settings.reminderBody;
         } else {
             subjectTemplate = settings.receiptSubject;
             bodyTemplate = settings.receiptBody;
@@ -109,6 +112,7 @@ export async function sendDonationReceipt({
     else if (type === "cancellation") title = "Donation Cancelled";
     else if (type === "pause") title = "Subscription Paused";
     else if (type === "resume") title = "Subscription Resumed";
+    else if (type === "reminder") title = "Upcoming Donation Reminder";
 
     const isRecurring = frequency === "Monthly" || frequency === "Weekly";
 
@@ -127,13 +131,15 @@ export async function sendDonationReceipt({
         return trimmed;
     };
 
-    if (isRecurring && (type === "receipt" || type === "pause" || type === "resume" || type === "cancellation")) {
+    if (isRecurring && (type === "receipt" || type === "pause" || type === "resume" || type === "cancellation" || type === "reminder")) {
         const statusHeader = type === "pause" ? "Subscription Paused" :
             type === "resume" ? "Subscription Resumed" :
-                type === "cancellation" ? "Subscription Cancelled" : "Welcome Aboard";
+                type === "cancellation" ? "Subscription Cancelled" : 
+                type === "reminder" ? "Upcoming Donation Reminder" : "Welcome Aboard";
         const statusSubtext = type === "pause" ? "Your subscription has been paused. You can resume it at any time from your account." :
             type === "resume" ? "Your subscription has been resumed. Thank you for your continued support!" :
                 type === "cancellation" ? "Your subscription has been cancelled. We're sorry to see you go." :
+                type === "reminder" ? "This is a friendly reminder of your upcoming donation charge." :
                     "Thank you for your subscription purchase!";
 
         htmlContent = `
