@@ -297,23 +297,12 @@
     return await fetch('/cart.js').then(r => r.json());
   }
 
-  function getDonationAmount(totalPriceCents, mode, customAmount) {
-    const total = totalPriceCents / 100.0;
+  function getDonationAmount(mode, customAmount) {
+    if (mode === "nearest1") return 1;
+    if (mode === "nearest5") return 5;
+    if (mode === "nearest10") return 10;
     if (mode === "custom") return parseFloat(customAmount || 1);
-    
-    let rounded = total;
-    if (mode === "nearest1") rounded = Math.ceil(total);
-    else if (mode === "nearest5") rounded = Math.ceil(total / 5) * 5;
-    else if (mode === "nearest10") rounded = Math.ceil(total / 10) * 10;
-    
-    let diff = +(rounded - total).toFixed(2);
-    // If already at a round number, offer a full unit donation
-    if (diff <= 0) {
-      if (mode === "nearest1") diff = 1;
-      else if (mode === "nearest5") diff = 5;
-      else if (mode === "nearest10") diff = 10;
-    }
-    return diff;
+    return 1;
   }
 
   async function removeType(type) {
@@ -330,34 +319,11 @@
     }
   }
 
-  function breakAmount(amount, type) {
-    let remainingCents = Math.round(amount * 100);
-    let items = [];
-    const sortedVariants = [...VARIANTS].sort((a, b) => b.price - a.price);
-    
-    for (let v of sortedVariants) {
-      const vPriceCents = Math.round(v.price * 100);
-      if (vPriceCents <= 0) continue;
-      
-      let qty = Math.floor(remainingCents / vPriceCents);
-      if (qty > 0) {
-        items.push({
-          id: v.id,
-          quantity: qty,
-          properties: { type: type }
-        });
-        remainingCents -= qty * vPriceCents;
-      }
-    }
-    return items;
-  }
-
   async function initDonation() {
     const checkbox = document.getElementById("donate-check");
     const label = document.getElementById("donation-label");
     const input = document.getElementById("extra-donation-input");
     const btn = document.getElementById("extra-donation-btn");
-    const wrapper = document.getElementById("extra-donation-wrapper");
 
     if (!checkbox) return;
 
@@ -365,7 +331,7 @@
     const mode = settings?.rounding || "nearest1";
     const customAmount = settings?.customAmount || settings?.price || 0;
 
-    let donationAmount = getDonationAmount(cart.total_price, mode, customAmount);
+    let donationAmount = getDonationAmount(mode, customAmount);
     if (donationAmount <= 0) donationAmount = 1;
 
     label.innerText = `Donate ₹${donationAmount} and make an impact`;
@@ -379,16 +345,23 @@
     checkbox.addEventListener("change", async function () {
       if (this.checked) {
         await removeType("roundup");
-        const items = breakAmount(donationAmount, "roundup");
-        if (items.length === 0) {
-            console.error("[RoundUp] No variants found.");
+        
+        if (!ONE_RUPEE) {
+            alert("Donation product not set up correctly.");
             this.checked = false;
             return;
         }
+
         await fetch('/cart/add.js', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ items })
+          body: JSON.stringify({
+            items: [{
+              id: ONE_RUPEE.id,
+              quantity: Math.round(donationAmount),
+              properties: { type: "roundup" }
+            }]
+          })
         });
       } else {
         await removeType("roundup");
@@ -400,15 +373,26 @@
       btn.addEventListener("click", async function () {
         const value = parseFloat(input.value || 0);
         if (!value || value <= 0) {
-          alert("Enter valid amount");
+          alert("Please enter a valid amount");
           return;
         }
         await removeType("extra");
-        const items = breakAmount(value, "extra");
+        
+        if (!ONE_RUPEE) {
+            alert("Donation product not set up correctly.");
+            return;
+        }
+
         await fetch('/cart/add.js', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ items })
+          body: JSON.stringify({
+            items: [{
+                id: ONE_RUPEE.id,
+                quantity: Math.round(value),
+                properties: { type: "extra" }
+            }]
+          })
         });
         location.reload();
       });
