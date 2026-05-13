@@ -24,18 +24,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const results = {
         processedShops: 0,
         remindersSent: 0,
-        errors: [] as string[]
+        errors: [] as string[],
+        logs: [] as string[]
     };
 
     for (const { shop } of shops) {
         try {
             // 2. Get unauthenticated admin context
             const { admin } = await unauthenticated.admin(shop);
-            
+
             // 3. Check if shop has reminder feature enabled
             const subscription = await db.planSubscription.findUnique({ where: { shop } });
             const plan = subscription?.plan || "basic";
-            
+
             if (!checkFeatureAccess(plan, "canSendReminders")) {
                 console.log(`[Cron] Skipping shop ${shop} - reminders not supported for plan: ${plan}`);
                 continue;
@@ -91,30 +92,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             for (const edge of contracts) {
                 const contract = edge.node;
                 const nextBillingDate = new Date(contract.nextBillingDate);
-                
-                // Calculate target date (3 days from now)
+
+                // Calculate target date (7 days from now for testing)
                 const targetDate = new Date();
-                targetDate.setDate(targetDate.getDate() + 3);
-                
+                targetDate.setDate(targetDate.getDate() + 7);
+
+                const logMsg = `Checking contract ${contract.id} for shop ${shop}. Next billing: ${nextBillingDate.toISOString().split('T')[0]}, Target: ${targetDate.toISOString().split('T')[0]}`;
+                console.log(`[Cron] ${logMsg}`);
+                results.logs.push(logMsg);
+
                 // Check if billing date is the target date (comparing only Year-Month-Day)
                 const isTargetDate = nextBillingDate.getUTCFullYear() === targetDate.getUTCFullYear() &&
-                                     nextBillingDate.getUTCMonth() === targetDate.getUTCMonth() &&
-                                     nextBillingDate.getUTCDate() === targetDate.getUTCDate();
+                    nextBillingDate.getUTCMonth() === targetDate.getUTCMonth() &&
+                    nextBillingDate.getUTCDate() === targetDate.getUTCDate();
 
                 if (isTargetDate) {
+                    console.log(`[Cron] Found match for contract ${contract.id}!`);
                     const orderId = contract.originOrder?.name || contract.id;
-                    
+
                     // 5. Check if we already sent a reminder for THIS billing date
                     const existingSub = await db.subscription.findUnique({
                         where: { orderId: orderId }
                     });
 
-                    const reminderSentForThisDate = existingSub?.reminderSentForDate && 
+                    const reminderSentForThisDate = existingSub?.reminderSentForDate &&
                         new Date(existingSub.reminderSentForDate).toISOString().split('T')[0] === nextBillingDate.toISOString().split('T')[0];
 
                     if (!reminderSentForThisDate) {
                         console.log(`[Cron] Sending reminder to ${contract.customer?.email} for shop ${shop}`);
-                        
+
                         const line = contract.lines.edges[0]?.node;
                         const amount = line?.currentPrice?.amount || "0.00";
                         const frequency = line?.sellingPlanName || "Subscription";
@@ -172,7 +178,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     return new Response(JSON.stringify({
         success: true,
-        ...results,
+        processedShops: results.processedShops,
+        remindersSent: results.remindersSent,
+        errors: results.errors,
+        logs: results.logs,
         timestamp: new Date().toISOString()
     }), {
         headers: { "Content-Type": "application/json" }
