@@ -3,7 +3,8 @@
 {% assign donation_product = all_products[donation_settings.productHandle] %}
 {% assign show_on_empty_cart = app.metafields.common.show_on_empty_cart.value | default: false %}
 
-{% if donation_settings and donation_settings.enabled == true and (cart.item_count > 0 or show_on_empty_cart) %}
+{% if donation_settings and donation_settings.enabled == true %}
+{% if cart.item_count > 0 or show_on_empty_cart %}
 <div id="roundup-container-{{ block.id }}" class="rd-premium-outer" style="display: {% if global_enabled == false %}none{% else %}block{% endif %};">
   <div class="rd-premium-card">
     <div class="rd-premium-header">
@@ -14,6 +15,8 @@
             alt="{{ donation_product.title }}"
             class="rd-hero-image"
             loading="lazy"
+            width="160"
+            height="160"
           >
           <div class="rd-image-overlay"></div>
         </div>
@@ -422,6 +425,7 @@
 </script>
 
 </div>
+{% endif %}
 {% endif %}
 
 {% schema %}
