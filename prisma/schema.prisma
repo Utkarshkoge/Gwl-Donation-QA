@@ -123,7 +123,8 @@ model EmailSettings {
   resumeBody      String   @default("Your subscription for <strong>{{donation_name}}</strong> has been resumed.")
   reminderSubject String   @default("Upcoming Donation Reminder: {{amount}}")
   reminderBody    String   @default("This is a friendly reminder that your next donation of <strong>{{currency}}{{amount}}</strong> for <strong>{{donation_name}}</strong> is scheduled for {{nextBillingDate}}.")
-  logoUrl         String?
+  logoUrl                            String?
+  notifyMerchantOnSubscriptionChange Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
