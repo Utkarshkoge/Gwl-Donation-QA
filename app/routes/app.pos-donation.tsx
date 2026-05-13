@@ -216,11 +216,6 @@ export default function PosDonation() {
         orderTag: savedSettings.orderTag,
     });
 
-    const [localBlockConfig, setLocalBlockConfig] = useState({
-        productBlockEnabled: blockConfig?.productBlockEnabled ?? true,
-        cartBlockEnabled: blockConfig?.cartBlockEnabled ?? true,
-    });
-
     const isSaving =
         fetcher.state === "submitting" && fetcher.formMethod === "POST";
 
@@ -601,22 +596,11 @@ export default function PosDonation() {
                     themeEditorUrl: `https://admin.shopify.com/store/${shopify.config?.shop?.replace(".myshopify.com", "") || ""}/themes/current/editor?template=product`,
                     buttonLabel: "Donation App Block on Product Page",
                     previewSvg: PRODUCT_PREVIEW_SVG,
-                    enabled: localBlockConfig.productBlockEnabled,
                     instructions: [
                         "Go to ", "Online Store", " ➺ ", "Themes", " ➺ Click on ", "Customize",
                         " ➺ Select ", "Product Page", " Template ➺ Click ", "Add Block",
                         " ➺ Select ", "POS Donation"
                     ],
-                    onToggle: (enabled) => {
-                        setLocalBlockConfig(prev => ({ ...prev, productBlockEnabled: enabled }));
-                        fetcher.submit(
-                            { 
-                                productBlockEnabled: String(enabled), 
-                                cartBlockEnabled: String(localBlockConfig.cartBlockEnabled) 
-                            }, 
-                            { method: "POST", action: "/api/block-config" }
-                        );
-                    }
                 },
                 {
                     id: "pos-cart",
@@ -625,22 +609,11 @@ export default function PosDonation() {
                     themeEditorUrl: `https://admin.shopify.com/store/${shopify.config?.shop?.replace(".myshopify.com", "") || ""}/themes/current/editor?template=cart`,
                     buttonLabel: "Donation App Block on Cart Page",
                     previewSvg: CART_PREVIEW_SVG,
-                    enabled: localBlockConfig.cartBlockEnabled,
                     instructions: [
                         "Go to ", "Online Store", " ➺ ", "Themes", " ➺ Click on ", "Customize",
                         " ➺ Select ", "Cart Page", " Template ➺ Click ", "Add Block",
                         " ➺ Select ", "POS Donation"
                     ],
-                    onToggle: (enabled) => {
-                        setLocalBlockConfig(prev => ({ ...prev, cartBlockEnabled: enabled }));
-                        fetcher.submit(
-                            { 
-                                productBlockEnabled: String(localBlockConfig.productBlockEnabled), 
-                                cartBlockEnabled: String(enabled) 
-                            }, 
-                            { method: "POST", action: "/api/block-config" }
-                        );
-                    }
                 }
             ]}
         />

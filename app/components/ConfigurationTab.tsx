@@ -17,20 +17,17 @@ export type BlockItem = {
   buttonLabel: string;
   previewSvg: string;
   instructions: string[];
-  enabled: boolean;
-  onToggle: (enabled: boolean) => void | Promise<void>;
 };
 
 type ConfigurationTabProps = {
   heading?: string;
   subheading?: string;
   blocks: BlockItem[];
-  isSaving?: boolean;
 };
 
 /* ─── Block Card ─────────────────────────────────────────────────────────── */
 
-type BlockCardProps = BlockItem & { isSaving: boolean };
+type BlockCardProps = BlockItem;
 
 function BlockCard({
   title,
@@ -39,17 +36,7 @@ function BlockCard({
   buttonLabel,
   previewSvg,
   instructions,
-  enabled,
-  onToggle,
-  isSaving,
 }: BlockCardProps) {
-  const [internalEnabled, setInternalEnabled] = useState(enabled);
-
-  const handleToggle = async (val: boolean) => {
-    setInternalEnabled(val);
-    await onToggle(val);
-  };
-
   return (
     <div className="config-card">
       <div className="config-card__header">
@@ -57,7 +44,6 @@ function BlockCard({
           <h3 className="config-card__title">{title}</h3>
           <p className="config-card__description">{description}</p>
         </div>
-        <div className="config-card__toggle-wrap"><label className="config-toggle"><input type="checkbox" checked={internalEnabled} onChange={(e) => handleToggle(e.target.checked)} disabled={isSaving}/><span className="config-toggle__slider"/><span style={{ fontWeight: 500 }}>{internalEnabled ? "Enabled" : "Disabled"}</span></label></div>
       </div>
 
       <div className="config-card__body">
@@ -114,7 +100,6 @@ export default function ConfigurationTab({
   heading = "Add App Block via Theme Customizer",
   subheading = "Set up the donation widget on your store pages using the theme customizer.",
   blocks,
-  isSaving = false,
 }: ConfigurationTabProps) {
   return (
     <div className="config-tab">
@@ -124,7 +109,7 @@ export default function ConfigurationTab({
       </div>
 
       {blocks.map((block) => (
-        <BlockCard key={block.id} {...block} isSaving={isSaving} />
+        <BlockCard key={block.id} {...block} />
       ))}
 
       <style>{`

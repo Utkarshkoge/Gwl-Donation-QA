@@ -1292,16 +1292,11 @@ export default function RoundUpDonationPage() {
                             themeEditorUrl: `https://admin.shopify.com/store/${(settings?.shop || "").split(".")[0]}/themes/current/editor?template=cart`,
                             buttonLabel: "Open Cart Editor ↗",
                             previewSvg: CART_PREVIEW_SVG,
-                            enabled: enabled,
                             instructions: [
                                 "Go to ", "Online Store", " ➺ ", "Themes", " ➺ Click on ", "Customize",
                                 " ➺ Select ", "Cart Page", " Template ➺ Click ", "Add Block",
                                 " ➺ Select ", "Round Up Donation"
                             ],
-                            onToggle: (val) => {
-                                setEnabled(val);
-                                fetcher.submit({ enabled: String(val) }, { method: "post" });
-                            }
                         }
                     ]}
                 />

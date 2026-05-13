@@ -226,21 +226,11 @@ export default function PresetDonation() {
                   themeEditorUrl: `https://${shop}/admin/themes/current/editor?template=product&context=apps`,
                   buttonLabel: "Donation App Block on Product Page",
                   previewSvg: PRODUCT_PREVIEW_SVG,
-                  enabled: blockConfig.productBlockEnabled,
                   instructions: [
                     "Go to ", "Online Store → Themes", " → Click on ", "Customize",
                     " → Select Product Page Template ", "Click Add Block", " → Select ",
                     "Donation Product Page", " → Click ", "Save"
                   ],
-                  onToggle: (enabled) => {
-                    fetcher.submit(
-                      { 
-                        productBlockEnabled: String(enabled), 
-                        cartBlockEnabled: String(blockConfig.cartBlockEnabled) 
-                      }, 
-                      { method: "POST", action: "/api/block-config" }
-                    );
-                  }
                 },
                 {
                   id: "cart",
@@ -249,21 +239,11 @@ export default function PresetDonation() {
                   themeEditorUrl: `https://${shop}/admin/themes/current/editor?template=cart&context=apps`,
                   buttonLabel: "Donation App Block on Cart Page",
                   previewSvg: CART_PREVIEW_SVG,
-                  enabled: blockConfig.cartBlockEnabled,
                   instructions: [
                     "Go to ", "Online Store → Themes", " → Click on ", "Customize",
                     " → Select Cart Page Template ", "Click Add Block", " → Select ",
                     "Donation Cart Widget", " → Click ", "Save"
                   ],
-                  onToggle: (enabled) => {
-                    fetcher.submit(
-                      { 
-                        productBlockEnabled: String(blockConfig.productBlockEnabled), 
-                        cartBlockEnabled: String(enabled) 
-                      }, 
-                      { method: "POST", action: "/api/block-config" }
-                    );
-                  }
                 }
               ]}
             />
