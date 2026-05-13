@@ -21,6 +21,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         shop = auth.shop;
         topic = auth.topic;
         console.log(`[Webhook] Auth SUCCESS. Topic: ${topic}, Shop: ${shop}`);
+        console.log(`[Webhook] Payload ID: ${payload.id}, Name: ${payload.name}`);
 
         if (topic !== "ORDERS_CREATE") {
             console.warn(`[Webhook] Unexpected topic: ${topic}`);
@@ -248,9 +249,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
 
         // Apply Tagging and Logic (Consolidated Section)
+        let isApplicable = false;
         let isPosDonationSource = false;
         let frequency: "one_time" | "monthly" | "weekly" = "one_time";
+        let samplePriceCents = 0;
+
         if (isRecurring && recurringSellingPlanId) {
+            isApplicable = true; // Subscriptions are always donations
             if (config) {
                 const spId = recurringSellingPlanId.split('/').pop() || "";
                 if (config.monthlyPlanId?.includes(spId)) frequency = "monthly";
@@ -258,9 +263,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
         }
 
-        let isApplicable = false;
+        // Detect properties-based subscriptions
+        for (const lineItem of (order.line_items || [])) {
+            const spProp = (lineItem.properties || []).find((p: any) => p.name === "selling_plan" || p.name === "_selling_plan_id");
+            if (spProp) {
+                isRecurring = true;
+                isApplicable = true;
+            }
+            const subProp = (lineItem.properties || []).find((p: any) => p.name === "subscription_id" || p.name === "_subscription_id");
+            if (subProp) {
+                isRecurring = true;
+                isApplicable = true;
+            }
+        }
         // donationAmtCents already initialized at top
-        let samplePriceCents = 0;
         const totalCents = parseFloat(order.total_price || 0) * 100;
         const minValCents = (effectiveSettings.minimumValue || 0) * 100;
 
@@ -323,6 +339,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
         }
 
+        console.log(`[Webhook] Applicable check: isApplicable=${isApplicable}, hasCampaignDonation=${hasCampaignDonation}`);
         if (isApplicable || hasCampaignDonation) {
             // ── Deduplication Fix: Check if an email was already sent for this order ──
             const [posSent, recSent, roundSent, presetSent] = await Promise.all([
@@ -417,6 +434,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     paymentMethod = order.payment_gateway_names[0];
                 }
 
+                console.log(`[Webhook] Calling sendDonationReceipt for ${currentCustomerEmail}...`);
                 const res = await sendDonationReceipt({
                     email: currentCustomerEmail,
                     name: currentCustomerName,
@@ -433,6 +451,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     paymentMethod: paymentMethod,
                     productImage: (order as any).donation_product_image
                 });
+                console.log(`[Webhook] sendDonationReceipt result: ${JSON.stringify(res)}`);
                 if (res.success) {
                     emailStatus = "sent";
                     sentDate = new Date();

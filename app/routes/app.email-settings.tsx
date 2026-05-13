@@ -30,6 +30,7 @@ interface EmailSettings {
     resumeBody: string;
     reminderSubject: string;
     reminderBody: string;
+    notifyMerchantOnSubscriptionChange: boolean;
 }
 
 const DEFAULT_SETTINGS: EmailSettings = {
@@ -139,6 +140,7 @@ const DEFAULT_SETTINGS: EmailSettings = {
 <p><strong>Amount:</strong> {{currency}}{{amount}}</p>
 <hr />
 <p>Thank you for your continued support! You can manage your subscription at any time using the link below.</p>`,
+    notifyMerchantOnSubscriptionChange: false,
 };
 
 // ─── Loader ─────────────────────────────────────────────────
@@ -183,6 +185,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         resumeBody: (formData.get("resumeBody") as string) || DEFAULT_SETTINGS.resumeBody,
         reminderSubject: (formData.get("reminderSubject") as string) || DEFAULT_SETTINGS.reminderSubject,
         reminderBody: (formData.get("reminderBody") as string) || DEFAULT_SETTINGS.reminderBody,
+        notifyMerchantOnSubscriptionChange: formData.get("notifyMerchantOnSubscriptionChange") === "true",
     };
 
     await prisma.emailSettings.upsert({
@@ -216,6 +219,7 @@ export default function EmailSettingsPage() {
         resumeBody: savedSettings.resumeBody || DEFAULT_SETTINGS.resumeBody,
         reminderSubject: savedSettings.reminderSubject || DEFAULT_SETTINGS.reminderSubject,
         reminderBody: savedSettings.reminderBody || DEFAULT_SETTINGS.reminderBody,
+        notifyMerchantOnSubscriptionChange: savedSettings.notifyMerchantOnSubscriptionChange ?? false,
     });
 
     // Snapshot of initial settings for dirty-state detection
@@ -266,7 +270,7 @@ export default function EmailSettingsPage() {
     };
 
     const handleSettingChange = useCallback(
-        (field: keyof EmailSettings, value: string) => {
+        (field: keyof EmailSettings, value: any) => {
             setSettings((prev) => ({ ...prev, [field]: value }));
             if (errors[field]) {
                 setErrors(prev => {
@@ -337,6 +341,23 @@ export default function EmailSettingsPage() {
                                          error={errors.ccEmail}
                                          onChange={(e: any) => handleSettingChange("ccEmail", e.target.value)}
                                      />
+                                </div>
+                                <div style={{ marginBottom: "16px", padding: "12px", background: "#f8f9fa", borderRadius: "8px", border: "1px solid #e1e3e5" }}>
+                                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                       <input 
+                                           type="checkbox" 
+                                           id="notifyMerchantOnSubscriptionChange"
+                                           checked={settings.notifyMerchantOnSubscriptionChange}
+                                           onChange={(e) => handleSettingChange("notifyMerchantOnSubscriptionChange", e.target.checked)}
+                                           style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                                       />
+                                       <label htmlFor="notifyMerchantOnSubscriptionChange" style={{ fontSize: "14px", fontWeight: "600", cursor: "pointer" }}>
+                                           Receive subscription status change notifications
+                                       </label>
+                                   </div>
+                                   <div style={{ marginTop: "4px", marginLeft: "28px" }}>
+                                       <s-text color="subdued" size="small">Get an email whenever a customer pauses, resumes, or cancels their recurring donation.</s-text>
+                                   </div>
                                 </div>
                                 <div style={{ marginBottom: "16px" }}>
                                     <div style={{ marginBottom: "8px" }}>

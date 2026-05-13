@@ -48,17 +48,24 @@ export async function sendDonationReceipt({
 
     sgMail.setApiKey(apiKey);
 
-    const settings = await db.emailSettings.findUnique({ where: { shop } });
+    let settings = null;
+    try {
+        settings = await db.emailSettings.findUnique({ where: { shop } });
+    } catch (dbError) {
+        console.error("[sendDonationReceipt] Error fetching email settings:", dbError);
+    }
 
     // Defaults
     let replyToEmail = verifiedFromEmail;
     let ccEmail = "";
+    let notifyMerchant = false;
     let subjectTemplate = `Thank you for your donation (Order ${orderNumber})`;
     let bodyTemplate = `We've received your generous donation of <strong>${amount}</strong> along with your order ${orderNumber}.`;
 
     if (settings) {
         replyToEmail = settings.contactEmail || replyToEmail;
         ccEmail = settings.ccEmail || "";
+        notifyMerchant = (settings as any).notifyMerchantOnSubscriptionChange || false;
 
         if (type === "refund") {
             subjectTemplate = settings.refundSubject;
@@ -237,6 +244,24 @@ export async function sendDonationReceipt({
 
     try {
         await sgMail.send(msg);
+
+        // ── Merchant Notification Copy ──
+        // Send a copy to the merchant if enabled, but don't let it crash the main flow
+        if (notifyMerchant && type !== "receipt" && (type === "pause" || type === "resume" || type === "cancellation" || type === "reminder")) {
+            try {
+                const merchantMsg = {
+                    ...msg,
+                    to: replyToEmail, // Send to merchant's contact email
+                    replyTo: email,    // Reply-to goes to customer
+                    subject: `[Merchant Copy] ${finalSubject}`
+                };
+                await sgMail.send(merchantMsg);
+                console.log(`[sendDonationReceipt] Merchant copy sent to ${replyToEmail}`);
+            } catch (merchantError) {
+                console.error("[sendDonationReceipt] Failed to send merchant copy:", merchantError);
+            }
+        }
+
         return { success: true };
     } catch (error: any) {
         console.error("SendGrid rejected payload or failed:", error);
