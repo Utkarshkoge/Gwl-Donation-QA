@@ -168,6 +168,7 @@ model AppSettings {
   ccEmail         String   @default("")
   subjectLine     String   @default("Donation Receipt")
   emailTemplate   String   @default("")
+  showOnEmptyCart Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

@@ -78,7 +78,8 @@
   {% assign container_display = 'none' %}
 {% endif %}
 
-{% if request.page_type != 'cart' or cart.item_count > 0 %}
+{% assign show_on_empty_cart = app.metafields.common.show_on_empty_cart.value | default: false %}
+{% if request.page_type != 'cart' or cart.item_count > 0 or show_on_empty_cart %}
 <div class="pos-card-wrapper" id="pos-donation-{{ block.id }}" style="display: {{ container_display }};">
   <div class="pos-premium-card">
     <div class="pos-card-header">
@@ -336,12 +337,13 @@
               console.log("[POS Donation] Result — applicable:", isApplicable, "total:", totalValCents / 100, "donation:", donationAmtCents / 100);
 
               var globalEnabled = {{ app.metafields.common.enabled.value | json }};
+              var showOnEmptyCart = {{ app.metafields.common.show_on_empty_cart.value | json }} || false;
               if (globalEnabled === false || baseSettings.enabled === false) {
                  containerEl.style.display = 'none';
                  return;
               }
               
-              if (!isApplicable) {
+              if (!isApplicable && !showOnEmptyCart) {
                 containerEl.style.display = 'none';
                 return;
               } else {

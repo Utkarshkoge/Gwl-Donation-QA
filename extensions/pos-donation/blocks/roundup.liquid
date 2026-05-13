@@ -1,8 +1,9 @@
 {% assign global_enabled = app.metafields.common.enabled.value %}
 {% assign donation_settings = shop.metafields.roundup_donation.settings.value %}
 {% assign donation_product = all_products[donation_settings.productHandle] %}
+{% assign show_on_empty_cart = app.metafields.common.show_on_empty_cart.value | default: false %}
 
-{% if donation_settings and donation_settings.enabled == true and cart.item_count > 0 %}
+{% if donation_settings and donation_settings.enabled == true and (cart.item_count > 0 or show_on_empty_cart) %}
 <div id="roundup-container-{{ block.id }}" class="rd-premium-outer" style="display: {% if global_enabled == false %}none{% else %}block{% endif %};">
   <div class="rd-premium-card">
     <div class="rd-premium-header">
@@ -286,7 +287,7 @@
 
   // Support all variants including cents/paisa
   VARIANTS.sort((a, b) => b.price - a.price);
-  const ONE_RUPEE = VARIANTS.find(v => Math.round(v.price) === 1) || VARIANTS[0];
+  const ONE_RUPEE = VARIANTS.find(v => v.price === 1);
 
   let settings = {};
   try {
@@ -297,12 +298,23 @@
     return await fetch('/cart.js').then(r => r.json());
   }
 
-  function getDonationAmount(mode, customAmount) {
-    if (mode === "nearest1") return 1;
-    if (mode === "nearest5") return 5;
-    if (mode === "nearest10") return 10;
+  function getDonationAmount(totalPriceCents, mode, customAmount) {
+    const total = totalPriceCents / 100.0;
     if (mode === "custom") return parseFloat(customAmount || 1);
-    return 1;
+    
+    let rounded = total;
+    if (mode === "nearest1") rounded = Math.ceil(total);
+    else if (mode === "nearest5") rounded = Math.ceil(total / 5) * 5;
+    else if (mode === "nearest10") rounded = Math.ceil(total / 10) * 10;
+    
+    let diff = +(rounded - total).toFixed(2);
+    // If already at a round number, offer a full unit donation
+    if (diff <= 0) {
+      if (mode === "nearest1") diff = 1;
+      else if (mode === "nearest5") diff = 5;
+      else if (mode === "nearest10") diff = 10;
+    }
+    return diff;
   }
 
   async function removeType(type) {
@@ -319,15 +331,34 @@
     }
   }
 
-  async function initDonation() {
-    if (window.rdInitialized) return;
-    window.rdInitialized = true;
+  function breakAmount(amount, type) {
+    let remainingCents = Math.round(amount * 100);
+    let items = [];
+    const sortedVariants = [...VARIANTS].sort((a, b) => b.price - a.price);
     
-    console.log("[RoundUp] Initializing block...");
+    for (let v of sortedVariants) {
+      const vPriceCents = Math.round(v.price * 100);
+      if (vPriceCents <= 0) continue;
+      
+      let qty = Math.floor(remainingCents / vPriceCents);
+      if (qty > 0) {
+        items.push({
+          id: v.id,
+          quantity: qty,
+          properties: { type: type }
+        });
+        remainingCents -= qty * vPriceCents;
+      }
+    }
+    return items;
+  }
+
+  async function initDonation() {
     const checkbox = document.getElementById("donate-check");
     const label = document.getElementById("donation-label");
     const input = document.getElementById("extra-donation-input");
     const btn = document.getElementById("extra-donation-btn");
+    const wrapper = document.getElementById("extra-donation-wrapper");
 
     if (!checkbox) return;
 
@@ -335,7 +366,7 @@
     const mode = settings?.rounding || "nearest1";
     const customAmount = settings?.customAmount || settings?.price || 0;
 
-    let donationAmount = getDonationAmount(mode, customAmount);
+    let donationAmount = getDonationAmount(cart.total_price, mode, customAmount);
     if (donationAmount <= 0) donationAmount = 1;
 
     label.innerText = `Donate ₹${donationAmount} and make an impact`;
@@ -346,57 +377,41 @@
 
     if (existing) checkbox.checked = true;
 
-    checkbox.addEventListener("change", async function (e) {
-      e.stopPropagation();
+    checkbox.addEventListener("change", async function () {
       if (this.checked) {
         await removeType("roundup");
-        
-        if (ONE_RUPEE) {
-            await fetch('/cart/add.js', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({
-                items: [{
-                  id: ONE_RUPEE.id,
-                  quantity: Math.round(donationAmount),
-                  properties: { type: "roundup" }
-                }]
-              })
-            });
-            setTimeout(() => location.reload(), 300);
+        const items = breakAmount(donationAmount, "roundup");
+        if (items.length === 0) {
+            console.error("[RoundUp] No variants found.");
+            this.checked = false;
+            return;
         }
+        await fetch('/cart/add.js', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ items })
+        });
       } else {
         await removeType("roundup");
-        setTimeout(() => location.reload(), 300);
       }
+      location.reload();
     });
 
     if (btn) {
-      btn.addEventListener("click", async function (e) {
-        e.stopPropagation();
+      btn.addEventListener("click", async function () {
         const value = parseFloat(input.value || 0);
         if (!value || value <= 0) {
-          alert("Please enter a valid donation amount");
+          alert("Enter valid amount");
           return;
         }
         await removeType("extra");
-        
-        if (ONE_RUPEE) {
-            await fetch('/cart/add.js', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({
-                items: [{
-                    id: ONE_RUPEE.id,
-                    quantity: Math.round(value),
-                    properties: { type: "extra" }
-                }]
-              })
-            });
-            setTimeout(() => location.reload(), 300);
-        } else {
-            alert("Donation product not available.");
-        }
+        const items = breakAmount(value, "extra");
+        await fetch('/cart/add.js', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ items })
+        });
+        location.reload();
       });
     }
   }

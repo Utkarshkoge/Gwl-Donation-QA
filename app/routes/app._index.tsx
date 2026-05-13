@@ -130,6 +130,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     enabled: appSettings?.enabled ?? true,
+    showOnEmptyCart: appSettings?.showOnEmptyCart ?? false,
     shop: session.shop,
     currency: currencyCode,
     currentPlan: subscription?.plan ?? "basic",
@@ -164,65 +165,56 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const formData = await request.formData();
 
-  const enabled = formData.get("enabled") === "true";
+  const enabledStr = formData.get("enabled");
+  const showOnEmptyCartStr = formData.get("showOnEmptyCart");
+
+  const updateData: any = {};
+  if (enabledStr !== null) updateData.enabled = enabledStr === "true";
+  if (showOnEmptyCartStr !== null) updateData.showOnEmptyCart = showOnEmptyCartStr === "true";
 
   await prisma.appSettings.upsert({
-
     where: { shop },
-
-    update: { enabled },
-
-    create: { shop, enabled },
-
+    update: updateData,
+    create: { shop, ...updateData },
   });
 
   try {
-
     const appResponse = await admin.graphql(`query { currentAppInstallation { id } }`);
-
     const appData = await appResponse.json();
-
     const appId = appData.data.currentAppInstallation.id;
 
-    await admin.graphql(`
+    const metafields = [];
+    if (enabledStr !== null) {
+      metafields.push({
+        ownerId: appId,
+        namespace: "common",
+        key: "enabled",
+        type: "boolean",
+        value: enabledStr
+      });
+    }
+    if (showOnEmptyCartStr !== null) {
+      metafields.push({
+        ownerId: appId,
+        namespace: "common",
+        key: "show_on_empty_cart",
+        type: "boolean",
+        value: showOnEmptyCartStr
+      });
+    }
 
-      mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
-
-        metafieldsSet(metafields: $metafields) {
-
-          metafields { id }
-
-          userErrors { field message }
-
-        }
-
-      }
-
-    `, {
-
-      variables: {
-
-        metafields: [
-
-          {
-
-            ownerId: appId,
-
-            namespace: "common",
-
-            key: "enabled",
-
-            type: "boolean",
-
-            value: String(enabled)
-
+    if (metafields.length > 0) {
+      await admin.graphql(`
+        mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+          metafieldsSet(metafields: $metafields) {
+            metafields { id }
+            userErrors { field message }
           }
-
-        ]
-
-      }
-
-    });
+        }
+      `, {
+        variables: { metafields }
+      });
+    }
 
   } catch (e) {
 
@@ -251,21 +243,30 @@ export default function Index() {
   });
 
   const [enabled, setEnabled] = useState(loaderData?.enabled ?? true);
+  const [showOnEmptyCart, setShowOnEmptyCart] = useState(loaderData?.showOnEmptyCart ?? false);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
 
   useEffect(() => {
     if (fetcher.data?.status === "success") {
-      shopify.toast.show(`App ${enabled ? "enabled" : "disabled"} successfully`);
+      shopify.toast.show("Settings updated successfully");
     }
-  }, [fetcher.data, enabled, shopify]);
+  }, [fetcher.data, shopify]);
 
   const toggleStatus = () => {
     const nextEnabled = !enabled;
     setEnabled(nextEnabled);
     const formData = new FormData();
     formData.append("enabled", String(nextEnabled));
+    fetcher.submit(formData, { method: "POST" });
+  };
+
+  const toggleEmptyCart = () => {
+    const nextVal = !showOnEmptyCart;
+    setShowOnEmptyCart(nextVal);
+    const formData = new FormData();
+    formData.append("showOnEmptyCart", String(nextVal));
     fetcher.submit(formData, { method: "POST" });
   };
 
@@ -424,24 +425,45 @@ export default function Index() {
         </div>
 
         {/* --- GLOBAL CONTROL --- */}
-        <s-box padding="large" background="base" borderWidth="base" borderRadius="large" borderColor="base">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <s-stack gap="base">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <s-text type="strong">Global App Status</s-text>
-                <s-badge tone={enabled ? "success" : "warning"}>{enabled ? "Enabled" : "Paused"}</s-badge>
-              </div>
-              <s-text color="subdued">
-                {enabled
-                  ? "Your donation widgets are currently visible and active on your storefront."
-                  : "All donation features are currently hidden. Enable to resume collecting contributions."}
-              </s-text>
-            </s-stack>
-            <s-button variant={enabled ? "secondary" : "primary"} onClick={toggleStatus}>
-              {enabled ? "Disable All Widgets" : "Enable All Widgets"}
-            </s-button>
-          </div>
-        </s-box>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <s-box padding="large" background="base" borderWidth="base" borderRadius="large" borderColor="base">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <s-stack gap="base">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <s-text type="strong">Global App Status</s-text>
+                  <s-badge tone={enabled ? "success" : "warning"}>{enabled ? "Enabled" : "Paused"}</s-badge>
+                </div>
+                <s-text color="subdued">
+                  {enabled
+                    ? "Your donation widgets are currently visible and active on your storefront."
+                    : "All donation features are currently hidden. Enable to resume collecting contributions."}
+                </s-text>
+              </s-stack>
+              <s-button variant={enabled ? "secondary" : "primary"} onClick={toggleStatus}>
+                {enabled ? "Disable All" : "Enable All"}
+              </s-button>
+            </div>
+          </s-box>
+
+          <s-box padding="large" background="base" borderWidth="base" borderRadius="large" borderColor="base">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <s-stack gap="base">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <s-text type="strong">Display Settings</s-text>
+                  <s-badge tone={showOnEmptyCart ? "info" : "subdued"}>{showOnEmptyCart ? "Always Visible" : "Smart Hidden"}</s-badge>
+                </div>
+                <s-text color="subdued">
+                  {showOnEmptyCart
+                    ? "Donation blocks are always visible, even when the cart is empty."
+                    : "Donation blocks are automatically hidden when the cart has 0 items."}
+                </s-text>
+              </s-stack>
+              <s-button variant={showOnEmptyCart ? "secondary" : "primary"} onClick={toggleEmptyCart}>
+                {showOnEmptyCart ? "Hide on Empty Cart" : "Show on Empty Cart"}
+              </s-button>
+            </div>
+          </s-box>
+        </div>
 
         {/* --- CURRENT PLAN --- */}
         <s-box padding="large" background="base" borderWidth="base" borderRadius="large" borderColor="base">

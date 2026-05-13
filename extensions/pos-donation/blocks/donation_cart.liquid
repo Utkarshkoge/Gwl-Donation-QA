@@ -3,7 +3,9 @@
 {% endcomment %}
 
 {% assign global_enabled = app.metafields.common.enabled.value %}
-{% if cart.item_count > 0 %}
+{% assign show_on_empty_cart = app.metafields.common.show_on_empty_cart.value | default: false %}
+
+{% if cart.item_count > 0 or show_on_empty_cart %}
 <div
   id="donation-cart-block-{{ block.id }}"
   class="donation-cart-block dc-premium-outer"
