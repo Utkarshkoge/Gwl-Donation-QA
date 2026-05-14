@@ -1,43 +1,35 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
-    Page,
-    Layout,
-    Card,
-    Text,
-    Banner,
-    Badge,
-    BlockStack,
     InlineStack,
-    Checkbox,
-    Select,
-    Button,
     Box,
+    Text,
+    Badge,
     Icon,
-    Link,
-    Grid,
     Divider,
+    Select,
 } from "@shopify/polaris";
 import {
-    AlertBubbleIcon,
     CheckIcon,
     EditIcon,
-    PlayIcon,
-    XIcon,
+    AlertBubbleIcon,
 } from "@shopify/polaris-icons";
+import { useAppBridge } from "@shopify/app-bridge-react";
+import { Link } from "react-router";
 
 export default function PaymentRecoveryPage() {
+    const shopify = useAppBridge();
+
     const [enabled, setEnabled] = useState(true);
     const [retryAttempts, setRetryAttempts] = useState("8");
     const [retryInterval, setRetryInterval] = useState("1");
     const [fallbackAction, setFallbackAction] = useState("skip");
     const [sendNotifications, setSendNotifications] = useState(true);
-    const [showTutorials, setShowTutorials] = useState(true);
 
-    const handleEnabledChange = useCallback((value: boolean) => setEnabled(value), []);
+    const handleEnabledChange = useCallback((e: any) => setEnabled(e.target.checked), []);
     const handleRetryAttemptsChange = useCallback((value: string) => setRetryAttempts(value), []);
     const handleRetryIntervalChange = useCallback((value: string) => setRetryInterval(value), []);
     const handleFallbackActionChange = useCallback((value: string) => setFallbackAction(value), []);
-    const handleSendNotificationsChange = useCallback((value: boolean) => setSendNotifications(value), []);
+    const handleSendNotificationsChange = useCallback((e: any) => setSendNotifications(e.target.checked), []);
 
     const retryAttemptsOptions = Array.from({ length: 10 }, (_, i) => ({
         label: `${i + 1} attempts`,
@@ -55,213 +47,156 @@ export default function PaymentRecoveryPage() {
         { label: "Skip Failed Order - Continue subscription, skip this order only", value: "skip" },
     ];
 
+    const handleSave = () => {
+        shopify.toast.show("Recovery settings saved successfully");
+    };
+
     return (
-        <Page
-            title="Failed Payment Recovery Settings"
-            backAction={{ content: "Subscription Management", url: "/app/recurring-subscriptions" }}
-            primaryAction={{ content: "Save Settings", onAction: () => { } }}
-        >
-            <BlockStack gap="500">
-                <Banner tone="info" icon={AlertBubbleIcon}>
-                    <BlockStack gap="200">
-                        <Text variant="headingMd" as="h2">Maximize revenue recovery with intelligent payment retry automation</Text>
-                        <Text as="p">
-                            Industry studies show that automated payment recovery can recover up to 30% of failed transactions.
+        <s-page heading="Failed Payment Recovery Settings">
+            <s-button
+                slot="primary-action"
+                variant="primary"
+                onClick={handleSave}
+            >
+                Save Settings
+            </s-button>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "24px", marginTop: "16px" }}>
+                
+                {/* Info Banner */}
+                <div style={{ background: "#e1f5fe", padding: "20px", borderRadius: "12px", border: "1px solid #b3e5fc", display: "flex", gap: "16px", alignItems: "flex-start" }}>
+                    <div style={{ background: "#0288d1", borderRadius: "50%", padding: "4px", flexShrink: 0 }}>
+                        <Icon source={AlertBubbleIcon} tone="info" />
+                    </div>
+                    <div>
+                        <div style={{ fontWeight: "700", fontSize: "16px", marginBottom: "4px", color: "#01579b" }}>
+                            Maximize revenue recovery with intelligent payment retry automation
+                        </div>
+                        <div style={{ fontSize: "14px", color: "#0277bd", lineHeight: "1.5" }}>
+                            Industry studies show that automated payment recovery can recover up to 30% of failed transactions. 
                             Configure your strategy below to reduce involuntary churn and increase customer lifetime value.
-                        </Text>
-                    </BlockStack>
-                </Banner>
+                        </div>
+                    </div>
+                </div>
 
-                <Layout>
-                    <Layout.AnnotatedSection
-                        title="Recovery Settings"
-                        description={
-                            <BlockStack gap="200">
-                                <InlineStack gap="200" align="start">
-                                    <Badge tone="info">Pro Plan</Badge>
-                                </InlineStack>
-                                <Text as="p" tone="subdued">
-                                    Configure your intelligent payment recovery system to automatically handle failed transactions and maximize subscription revenue.
-                                </Text>
-                            </BlockStack>
-                        }
-                    >
-                        <BlockStack gap="400">
-                            <Card padding="400">
-                                <Box background="bg-surface-secondary" padding="400" borderRadius="200">
-                                    <InlineStack gap="300" align="start" wrap={false}>
-                                        <div style={{ backgroundColor: '#008060', borderRadius: '50%', padding: '4px' }}>
-                                            <Icon source={CheckIcon} tone="info" />
-                                        </div>
-                                        <BlockStack gap="100">
-                                            <Text variant="headingSm" as="h3">
-                                                Pro Tip: <Text as="span" fontWeight="regular">The optimal configuration is 3 retry attempts with 3-day intervals. This balances high recovery rates with customer experience, giving them adequate time to update payment methods while maintaining engagement.</Text>
-                                            </Text>
-                                        </BlockStack>
-                                    </InlineStack>
-                                </Box>
+                <div style={{ display: "flex", gap: "24px" }}>
+                    {/* Left Column: Description */}
+                    <div style={{ flex: "0 0 300px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                            <div style={{ fontSize: "18px", fontWeight: "700" }}>Recovery Settings</div>
+                            <Badge tone="info">Pro Plan</Badge>
+                        </div>
+                        <div style={{ fontSize: "14px", color: "#6D7175", lineHeight: "1.6" }}>
+                            Configure your intelligent payment recovery system to automatically handle failed transactions and maximize subscription revenue.
+                        </div>
+                    </div>
+
+                    {/* Right Column: Settings Card */}
+                    <div style={{ flex: 1 }}>
+                        <div style={{ background: "white", border: "1px solid #EBEBEB", borderRadius: "12px", padding: "24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                            
+                            {/* Pro Tip Card */}
+                            <div style={{ background: "#f0fdf4", padding: "16px", borderRadius: "8px", border: "1px solid #dcfce7", marginBottom: "24px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                                <div style={{ background: "#16a34a", borderRadius: "50%", padding: "4px", flexShrink: 0 }}>
+                                    <Icon source={CheckIcon} tone="info" />
+                                </div>
+                                <div>
+                                    <span style={{ fontWeight: "700", color: "#166534" }}>Pro Tip:</span>
+                                    <span style={{ fontSize: "14px", color: "#166534", marginLeft: "6px" }}>
+                                        The optimal configuration is 3 retry attempts with 3-day intervals. This balances high recovery rates with customer experience.
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                                 
-                                <Box paddingBlockStart="400">
-                                    <BlockStack gap="400">
-                                        <Checkbox
-                                            label="Enable Smart Payment Recovery"
-                                            checked={enabled}
-                                            onChange={handleEnabledChange}
-                                        />
+                                {/* Enable Toggle */}
+                                <div style={{ display: "flex", alignItems: "center", gap: "12px", background: enabled ? "#f8f9fa" : "transparent", padding: "12px", borderRadius: "8px", border: "1px solid #e1e3e5" }}>
+                                    <input 
+                                        type="checkbox" 
+                                        id="enableRecovery"
+                                        checked={enabled}
+                                        onChange={handleEnabledChange}
+                                        style={{ width: "20px", height: "20px", cursor: "pointer", accentColor: "#6C4A79" }}
+                                    />
+                                    <label htmlFor="enableRecovery" style={{ fontSize: "15px", fontWeight: "600", cursor: "pointer" }}>
+                                        Enable Smart Payment Recovery
+                                    </label>
+                                </div>
 
-                                        <Grid>
-                                            <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 6, xl: 6 }}>
-                                                <Select
-                                                    label="Smart Recovery Attempts"
-                                                    options={retryAttemptsOptions}
-                                                    value={retryAttempts}
-                                                    onChange={handleRetryAttemptsChange}
-                                                    disabled={!enabled}
-                                                />
-                                            </Grid.Cell>
-                                            <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 6, xl: 6 }}>
-                                                <Select
-                                                    label="Retry Interval"
-                                                    options={retryIntervalOptions}
-                                                    value={retryInterval}
-                                                    onChange={handleRetryIntervalChange}
-                                                    disabled={!enabled}
-                                                />
-                                            </Grid.Cell>
-                                        </Grid>
-
+                                <div style={{ opacity: enabled ? 1 : 0.5, pointerEvents: enabled ? "auto" : "none", display: "flex", flexDirection: "column", gap: "24px" }}>
+                                    
+                                    {/* Grid for Selects */}
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
                                         <Select
-                                            label="Fallback Action"
-                                            options={fallbackActionOptions}
-                                            value={fallbackAction}
-                                            onChange={handleFallbackActionChange}
-                                            disabled={!enabled}
+                                            label="Smart Recovery Attempts"
+                                            options={retryAttemptsOptions}
+                                            value={retryAttempts}
+                                            onChange={handleRetryAttemptsChange}
                                         />
+                                        <Select
+                                            label="Retry Interval"
+                                            options={retryIntervalOptions}
+                                            value={retryInterval}
+                                            onChange={handleRetryIntervalChange}
+                                        />
+                                    </div>
 
-                                        <Divider />
+                                    <Select
+                                        label="Fallback Action"
+                                        options={fallbackActionOptions}
+                                        value={fallbackAction}
+                                        onChange={handleFallbackActionChange}
+                                        helpText="What happens if all retry attempts fail."
+                                    />
 
-                                        <BlockStack gap="200">
-                                            <Text variant="headingSm" as="h3">Customer Communication</Text>
-                                            <InlineStack gap="400" align="start" blockAlign="center">
-                                                <Checkbox
-                                                    label="Send payment failure notifications"
+                                    <Divider />
+
+                                    {/* Communication Section */}
+                                    <div>
+                                        <div style={{ fontSize: "16px", fontWeight: "700", marginBottom: "16px" }}>Customer Communication</div>
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8f9fa", padding: "16px", borderRadius: "8px", border: "1px solid #e1e3e5" }}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    id="sendNotifications"
                                                     checked={sendNotifications}
                                                     onChange={handleSendNotificationsChange}
-                                                    disabled={!enabled}
+                                                    style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: "#6C4A79" }}
                                                 />
-                                                <Button variant="tertiary" icon={EditIcon} onClick={() => { }}>
+                                                <label htmlFor="sendNotifications" style={{ fontSize: "14px", fontWeight: "600", cursor: "pointer" }}>
+                                                    Send payment failure notifications
+                                                </label>
+                                            </div>
+                                            <Link to="/app/email-settings" style={{ textDecoration: "none" }}>
+                                                <s-button icon={EditIcon} variant="tertiary">
                                                     Customize Email
-                                                </Button>
-                                            </InlineStack>
-                                        </BlockStack>
-                                    </BlockStack>
-                                </Box>
-                            </Card>
-                        </BlockStack>
-                    </Layout.AnnotatedSection>
+                                                </s-button>
+                                            </Link>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                    {showTutorials && (
-                        <Layout.Section>
-                            <Card padding="400">
-                                <BlockStack gap="400">
-                                    <InlineStack align="space-between">
-                                        <Text variant="headingMd" as="h2">Tutorials</Text>
-                                        <Button
-                                            variant="tertiary"
-                                            icon={XIcon}
-                                            onClick={() => setShowTutorials(false)}
-                                            accessibilityLabel="Close tutorials"
-                                        />
-                                    </InlineStack>
+                {/* Footer Support */}
+                <div style={{ textAlign: "center", padding: "40px 0", borderTop: "1px solid #EBEBEB", marginTop: "20px" }}>
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "6px" }}>
+                        <span style={{ color: "#6D7175" }}>If you need support, we are</span>
+                        <Link to="/app/help" style={{ color: "#6C4A79", fontWeight: "600", textDecoration: "none" }}>here</Link>
+                        <span style={{ color: "#6D7175" }}>for you ❤️</span>
+                    </div>
+                </div>
+            </div>
 
-                                    <Grid>
-                                        <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
-                                            <Box
-                                                background="bg-surface-secondary"
-                                                borderRadius="200"
-                                                padding="0"
-                                                overflowX="hidden"
-                                                overflowY="hidden"
-                                                minHeight="140px"
-                                                borderStyle="solid"
-                                                borderWidth="025"
-                                                borderColor="border"
-                                            >
-                                                <InlineStack wrap={false}>
-                                                    <Box padding="400" width="100px" background="bg-surface-tertiary">
-                                                        <Text variant="headingLg" as="p" alignment="center">Appstle articles</Text>
-                                                    </Box>
-                                                    <Box padding="400">
-                                                        <BlockStack gap="300">
-                                                            <Text variant="headingSm" as="h3">Failed Payment Recovery in Appstle Subscriptions</Text>
-                                                            <Button variant="secondary" onClick={() => { }}>Read article</Button>
-                                                        </BlockStack>
-                                                    </Box>
-                                                </InlineStack>
-                                            </Box>
-                                        </Grid.Cell>
-                                        <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
-                                            <Box
-                                                background="bg-surface-secondary"
-                                                borderRadius="200"
-                                                padding="0"
-                                                overflowX="hidden"
-                                                overflowY="hidden"
-                                                minHeight="140px"
-                                                borderStyle="solid"
-                                                borderWidth="025"
-                                                borderColor="border"
-                                            >
-                                                <InlineStack wrap={false}>
-                                                    <Box width="150px" background="bg-surface-tertiary" minHeight="140px" position="relative">
-                                                        <div style={{
-                                                            width: '100%',
-                                                            height: '100%',
-                                                            backgroundColor: '#808080',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            position: 'relative'
-                                                        }}>
-                                                            <Icon source={PlayIcon} tone="base" />
-                                                            <div style={{
-                                                                position: 'absolute',
-                                                                bottom: '8px',
-                                                                left: '8px',
-                                                                backgroundColor: 'rgba(0,0,0,0.6)',
-                                                                color: 'white',
-                                                                padding: '2px 6px',
-                                                                borderRadius: '4px',
-                                                                fontSize: '12px'
-                                                            }}>
-                                                                2:06
-                                                            </div>
-                                                        </div>
-                                                    </Box>
-                                                    <Box padding="400">
-                                                        <BlockStack gap="300">
-                                                            <Text variant="headingSm" as="h3">Failed Payment Recovery</Text>
-                                                            <Button variant="secondary" onClick={() => { }}>Watch Video</Button>
-                                                        </BlockStack>
-                                                    </Box>
-                                                </InlineStack>
-                                            </Box>
-                                        </Grid.Cell>
-                                    </Grid>
-                                </BlockStack>
-                            </Card>
-                        </Layout.Section>
-                    )}
-                </Layout>
-
-                <Box paddingBlockEnd="800">
-                    <InlineStack align="center" gap="100">
-                        <Text as="p" tone="subdued">If you need support, we are</Text>
-                        <Link url="/app/help">here</Link>
-                        <Text as="p" tone="subdued">for you ❤️</Text>
-                    </InlineStack>
-                </Box>
-            </BlockStack>
-        </Page>
+            <style>{`
+                s-page::part(header) {
+                    border-bottom: 1px solid #dfe3e8;
+                    margin-bottom: 20px;
+                }
+            `}</style>
+        </s-page>
     );
 }
