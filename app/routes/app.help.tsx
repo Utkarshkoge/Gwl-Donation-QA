@@ -202,6 +202,18 @@ const faqs = [
     {
         question: "Do we have the ability to add/modify the design of the Donation Option?",
         answer: "Absolutely! You can customize the widget colors, layout, and placement through the Shopify Theme Editor and our in-app configuration tools."
+    },
+    {
+        question: "What is Payment Recovery and how does it work?",
+        answer: "Payment Recovery is an automated system that retries failed recurring donation charges. Instead of immediately cancelling a subscription when a payment fails, the system will retry the charge at specified intervals (e.g., every 3 days) to maximize revenue and reduce churn."
+    },
+    {
+        question: "How many times will the system retry a failed payment?",
+        answer: "You can configure the number of retry attempts (from 1 to 10) in the Payment Recovery settings. If all attempts fail, the system will perform your chosen fallback action (Pause, Cancel, or Skip)."
+    },
+    {
+        question: "Will customers be notified when a payment fails?",
+        answer: "Yes, if you enable 'Send payment failure notifications', customers will receive an automated email when a charge fails. You can customize the content of this email in the Email Configuration section."
     }
 ];
 

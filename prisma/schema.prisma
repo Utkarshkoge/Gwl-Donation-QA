@@ -123,6 +123,8 @@ model EmailSettings {
   resumeBody      String   @default("Your subscription for <strong>{{donation_name}}</strong> has been resumed.")
   reminderSubject String   @default("Upcoming Donation Reminder: {{amount}}")
   reminderBody    String   @default("This is a friendly reminder that your next donation of <strong>{{currency}}{{amount}}</strong> for <strong>{{donation_name}}</strong> is scheduled for {{nextBillingDate}}.")
+  recoverySubject String   @default("Action Required: Your donation payment failed")
+  recoveryBody    String   @default("We're writing to let you know that we were unable to process your recurring donation of <strong>{{currency}}{{amount}}</strong> for <strong>{{donation_name}}</strong>. We will automatically retry the payment in a few days.")
   logoUrl                            String?
   notifyMerchantOnSubscriptionChange Boolean  @default(false)
   createdAt       DateTime @default(now())
@@ -260,4 +262,16 @@ model CustomerSubscription {
   subscriptionId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model PaymentRecoverySettings {
+  id              String   @id @default(uuid())
+  shop            String   @unique
+  enabled         Boolean  @default(true)
+  retryAttempts   Int      @default(3)
+  retryInterval   Int      @default(3)
+  fallbackAction  String   @default("skip")
+  sendNotifications Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

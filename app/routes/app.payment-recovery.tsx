@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
     Icon,
     Select,
@@ -7,16 +7,62 @@ import {
     EditIcon,
 } from "@shopify/polaris-icons";
 import { useAppBridge } from "@shopify/app-bridge-react";
-import { Link } from "react-router";
+import { Link, useLoaderData, useFetcher } from "react-router";
+import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
+import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+    const { session } = await authenticate.admin(request);
+    const shop = session.shop;
+
+    const settings = await prisma.paymentRecoverySettings.findUnique({
+        where: { shop },
+    });
+
+    return {
+        settings: settings ?? {
+            enabled: true,
+            retryAttempts: 3,
+            retryInterval: 3,
+            fallbackAction: "skip",
+            sendNotifications: true,
+        }
+    };
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+    const { session } = await authenticate.admin(request);
+    const shop = session.shop;
+    const formData = await request.formData();
+
+    const data = {
+        enabled: formData.get("enabled") === "true",
+        retryAttempts: parseInt(formData.get("retryAttempts") as string) || 3,
+        retryInterval: parseInt(formData.get("retryInterval") as string) || 3,
+        fallbackAction: (formData.get("fallbackAction") as string) || "skip",
+        sendNotifications: formData.get("sendNotifications") === "true",
+    };
+
+    await prisma.paymentRecoverySettings.upsert({
+        where: { shop },
+        update: data,
+        create: { shop, ...data },
+    });
+
+    return { status: "success" };
+};
 
 export default function PaymentRecoveryPage() {
+    const { settings: savedSettings } = useLoaderData<typeof loader>();
+    const fetcher = useFetcher<typeof action>();
     const shopify = useAppBridge();
 
-    const [enabled, setEnabled] = useState(true);
-    const [retryAttempts, setRetryAttempts] = useState("3");
-    const [retryInterval, setRetryInterval] = useState("3");
-    const [fallbackAction, setFallbackAction] = useState("skip");
-    const [sendNotifications, setSendNotifications] = useState(true);
+    const [enabled, setEnabled] = useState(savedSettings.enabled);
+    const [retryAttempts, setRetryAttempts] = useState(savedSettings.retryAttempts.toString());
+    const [retryInterval, setRetryInterval] = useState(savedSettings.retryInterval.toString());
+    const [fallbackAction, setFallbackAction] = useState(savedSettings.fallbackAction);
+    const [sendNotifications, setSendNotifications] = useState(savedSettings.sendNotifications);
 
     const handleRetryAttemptsChange = useCallback((value: string) => setRetryAttempts(value), []);
     const handleRetryIntervalChange = useCallback((value: string) => setRetryInterval(value), []);
@@ -38,8 +84,22 @@ export default function PaymentRecoveryPage() {
         { label: "Skip Failed Order", value: "skip" },
     ];
 
+    const isSaving = fetcher.state === "submitting";
+
+    useEffect(() => {
+        if (fetcher.state === "idle" && fetcher.data?.status === "success") {
+            shopify.toast.show("Recovery settings saved successfully");
+        }
+    }, [fetcher.state, fetcher.data, shopify]);
+
     const handleSave = () => {
-        shopify.toast.show("Recovery settings saved successfully");
+        const formData = new FormData();
+        formData.append("enabled", enabled.toString());
+        formData.append("retryAttempts", retryAttempts);
+        formData.append("retryInterval", retryInterval);
+        formData.append("fallbackAction", fallbackAction);
+        formData.append("sendNotifications", sendNotifications.toString());
+        fetcher.submit(formData, { method: "POST" });
     };
 
     const THEME_COLOR = "#51395c";
@@ -51,8 +111,10 @@ export default function PaymentRecoveryPage() {
                 variant="primary"
                 onClick={handleSave}
                 className="main-save-btn"
+                {...(isSaving ? { loading: true } : {})}
+                disabled={isSaving}
             >
-                Save Settings
+                {isSaving ? "Saving..." : "Save Settings"}
             </s-button>
 
             <div className="recovery-settings-layout">

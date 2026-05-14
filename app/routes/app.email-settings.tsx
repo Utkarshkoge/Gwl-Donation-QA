@@ -30,6 +30,8 @@ interface EmailSettings {
     resumeBody: string;
     reminderSubject: string;
     reminderBody: string;
+    recoverySubject: string;
+    recoveryBody: string;
     notifyMerchantOnSubscriptionChange: boolean;
 }
 
@@ -131,7 +133,6 @@ const DEFAULT_SETTINGS: EmailSettings = {
 <p>We are glad to have you back!</p>
 
 <p>Thank you for your continued support ❤️</p>`,
-    reminderSubject: "Upcoming Donation Reminder: {{amount}}",
     reminderBody: `<h2 style="color:#6c4a79;">Donation Reminder ❤️</h2>
 <p>Hello <strong>{{first_name}}</strong>,</p>
 <p>This is a friendly reminder that your next donation of <strong>{{currency}}{{amount}}</strong> for <strong>{{donation_name}}</strong> is scheduled for {{nextBillingDate}}.</p>
@@ -140,6 +141,28 @@ const DEFAULT_SETTINGS: EmailSettings = {
 <p><strong>Amount:</strong> {{currency}}{{amount}}</p>
 <hr />
 <p>Thank you for your continued support! You can manage your subscription at any time using the link below.</p>`,
+    recoverySubject: "Action Required: Your donation payment failed",
+    recoveryBody: `<h2 style="color:#d82c0d;">Payment Failed ⚠️</h2>
+
+<p>Hello <strong>{{first_name}}</strong>,</p>
+
+<p>We're writing to let you know that we were unable to process your recurring donation of <strong>{{currency}}{{amount}}</strong> for <strong>{{donation_name}}</strong>.</p>
+
+<p>Don't worry! We will automatically retry the payment in a few days. However, to ensure your donation continues without interruption, please verify your payment details in your account.</p>
+
+<hr />
+
+<p><strong>Reason:</strong> Payment method declined</p>
+<p><strong>Amount:</strong> {{currency}}{{amount}}</p>
+<p><strong>Next Retry:</strong> {{nextBillingDate}}</p>
+
+<hr />
+
+<p>You can update your payment information by clicking the button below:</p>
+
+<p><a href="{{account_url}}" style="display:inline-block;padding:12px 24px;background:#51395c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Update Payment Info</a></p>
+
+<p>Thank you for your ongoing support!</p>`,
     notifyMerchantOnSubscriptionChange: false,
 };
 
@@ -185,6 +208,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         resumeBody: (formData.get("resumeBody") as string) || DEFAULT_SETTINGS.resumeBody,
         reminderSubject: (formData.get("reminderSubject") as string) || DEFAULT_SETTINGS.reminderSubject,
         reminderBody: (formData.get("reminderBody") as string) || DEFAULT_SETTINGS.reminderBody,
+        recoverySubject: (formData.get("recoverySubject") as string) || DEFAULT_SETTINGS.recoverySubject,
+        recoveryBody: (formData.get("recoveryBody") as string) || DEFAULT_SETTINGS.recoveryBody,
         notifyMerchantOnSubscriptionChange: formData.get("notifyMerchantOnSubscriptionChange") === "true",
     };
 
@@ -219,6 +244,8 @@ export default function EmailSettingsPage() {
         resumeBody: savedSettings.resumeBody || DEFAULT_SETTINGS.resumeBody,
         reminderSubject: savedSettings.reminderSubject || DEFAULT_SETTINGS.reminderSubject,
         reminderBody: savedSettings.reminderBody || DEFAULT_SETTINGS.reminderBody,
+        recoverySubject: savedSettings.recoverySubject || DEFAULT_SETTINGS.recoverySubject,
+        recoveryBody: savedSettings.recoveryBody || DEFAULT_SETTINGS.recoveryBody,
         notifyMerchantOnSubscriptionChange: savedSettings.notifyMerchantOnSubscriptionChange ?? false,
     });
 
@@ -410,6 +437,7 @@ export default function EmailSettingsPage() {
                                             { id: "refund", label: "Refund Template" },
                                             { id: "cancel", label: "Cancellation Template" },
                                             { id: "reminder", label: "Reminder Template" },
+                                            { id: "recovery", label: "Recovery Template" },
                                         ].map((tab) => (
                                             <button
                                                 key={tab.id}
@@ -456,13 +484,15 @@ export default function EmailSettingsPage() {
                                                     selectedTab === "receipt" ? settings.receiptSubject :
                                                         selectedTab === "refund" ? settings.refundSubject :
                                                             selectedTab === "cancel" ? settings.cancelSubject :
-                                                                settings.reminderSubject
+                                                                selectedTab === "reminder" ? settings.reminderSubject :
+                                                                    settings.recoverySubject
                                                 }
                                                 onInput={(e: any) => handleSettingChange(
                                                     selectedTab === "receipt" ? "receiptSubject" :
                                                         selectedTab === "refund" ? "refundSubject" :
                                                             selectedTab === "cancel" ? "cancelSubject" :
-                                                                "reminderSubject",
+                                                                selectedTab === "reminder" ? "reminderSubject" :
+                                                                    "recoverySubject",
                                                     e.target.value
                                                 )}
                                             />
@@ -494,13 +524,16 @@ export default function EmailSettingsPage() {
                                                     value={
                                                         selectedTab === "receipt" ? settings.receiptBody :
                                                             selectedTab === "refund" ? settings.refundBody :
-                                                                settings.cancelBody
+                                                                selectedTab === "cancel" ? settings.cancelBody :
+                                                                    selectedTab === "reminder" ? settings.reminderBody :
+                                                                        settings.recoveryBody
                                                     }
                                                     onChange={(value: string) => handleSettingChange(
                                                         selectedTab === "receipt" ? "receiptBody" :
                                                             selectedTab === "refund" ? "refundBody" :
                                                                 selectedTab === "cancel" ? "cancelBody" :
-                                                                    "reminderBody",
+                                                                    selectedTab === "reminder" ? "reminderBody" :
+                                                                        "recoveryBody",
                                                         value
                                                     )}
                                                 />
