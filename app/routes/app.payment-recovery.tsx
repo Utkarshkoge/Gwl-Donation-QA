@@ -63,21 +63,7 @@ export default function PaymentRecoveryPage() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: "24px", marginTop: "16px" }}>
                 
-                {/* Info Banner */}
-                <div style={{ background: "#e1f5fe", padding: "20px", borderRadius: "12px", border: "1px solid #b3e5fc", display: "flex", gap: "16px", alignItems: "flex-start" }}>
-                    <div style={{ background: "#0288d1", borderRadius: "50%", padding: "4px", flexShrink: 0 }}>
-                        <Icon source={AlertBubbleIcon} tone="info" />
-                    </div>
-                    <div>
-                        <div style={{ fontWeight: "700", fontSize: "16px", marginBottom: "4px", color: "#01579b" }}>
-                            Maximize revenue recovery with intelligent payment retry automation
-                        </div>
-                        <div style={{ fontSize: "14px", color: "#0277bd", lineHeight: "1.5" }}>
-                            Industry studies show that automated payment recovery can recover up to 30% of failed transactions. 
-                            Configure your strategy below to reduce involuntary churn and increase customer lifetime value.
-                        </div>
-                    </div>
-                </div>
+
 
                 <div style={{ display: "flex", gap: "24px" }}>
                     {/* Left Column: Description */}
