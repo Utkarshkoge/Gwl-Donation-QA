@@ -5,7 +5,6 @@ import {
 } from "@shopify/polaris";
 import {
     EditIcon,
-    AlertBubbleIcon,
 } from "@shopify/polaris-icons";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { Link } from "react-router";
@@ -40,7 +39,7 @@ export default function PaymentRecoveryPage() {
     ];
 
     const handleSave = () => {
-        shopify.toast.show("Recovery settings updated");
+        shopify.toast.show("Recovery settings saved successfully");
     };
 
     const THEME_COLOR = "#51395c";
@@ -51,376 +50,325 @@ export default function PaymentRecoveryPage() {
                 slot="primary-action"
                 variant="primary"
                 onClick={handleSave}
-                style={{ backgroundColor: THEME_COLOR, borderColor: THEME_COLOR }}
+                className="main-save-btn"
             >
                 Save Settings
             </s-button>
 
-            <div className="payment-recovery-wrapper">
-                <s-grid gridTemplateColumns="repeat(12, 1fr)" gap="large">
-                    
-                    {/* Left Column: Form Settings */}
-                    <s-grid-item gridColumn="span 8">
-                        <s-stack gap="large">
-                            
-                            {/* Recovery Status */}
-                            <s-section className="theme-card">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                    <s-heading>Recovery Status</s-heading>
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <s-badge tone={enabled ? "success" : "caution"}>
-                                            {enabled ? "ACTIVE" : "DISABLED"}
-                                        </s-badge>
-                                        <s-badge tone="info" className="pro-badge">PRO PLAN</s-badge>
-                                    </div>
+            <div className="recovery-settings-layout">
+                {/* Section 1: Activation */}
+                <div className="settings-row">
+                    <div className="settings-info">
+                        <h2 className="section-title">Enable Recovery</h2>
+                        <p className="section-desc">
+                            When enabled, our intelligent system will monitor and automatically retry failed recurring transactions to maximize your revenue.
+                        </p>
+                        <div style={{ marginTop: '12px' }}>
+                            <s-badge tone={enabled ? "success" : "caution"}>
+                                {enabled ? "Currently Active" : "Currently Disabled"}
+                            </s-badge>
+                        </div>
+                    </div>
+                    <div className="settings-card">
+                        <div className="card-content">
+                            <div className="toggle-box">
+                                <div className="toggle-text">
+                                    <strong>Smart Recovery System</strong>
+                                    <span>Automate the retry flow for failed billing attempts.</span>
                                 </div>
-                                <s-paragraph color="subdued">
-                                    Intelligent recovery automatically retries failed recurring payments using smart intervals to maximize success rates and reduce churn.
-                                </s-paragraph>
-                                <div style={{ marginTop: '20px' }}>
-                                    <s-button
-                                        onClick={() => setEnabled(!enabled)}
-                                        variant={enabled ? "secondary" : "primary"}
-                                        className={!enabled ? "primary-theme-btn" : ""}
-                                    >
-                                        {enabled ? "Disable Recovery System" : "Enable Recovery System"}
-                                    </s-button>
-                                </div>
-                            </s-section>
+                                <label className="custom-switch">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={enabled} 
+                                        onChange={(e) => setEnabled(e.target.checked)} 
+                                    />
+                                    <span className="custom-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                            {/* Configuration Logic */}
-                            <s-section className="theme-card">
-                                <s-heading>Retry Strategy</s-heading>
-                                <s-paragraph color="subdued">
-                                    Configure the automated retry flow. We recommend at least 3 attempts for optimal recovery results.
-                                </s-paragraph>
-                                
-                                <div className="settings-grid">
-                                    <div className="setting-item">
-                                        <Select
-                                            label="Maximum Retry Attempts"
-                                            options={retryAttemptsOptions}
-                                            value={retryAttempts}
-                                            onChange={handleRetryAttemptsChange}
-                                            disabled={!enabled}
-                                        />
-                                    </div>
-                                    <div className="setting-item">
-                                        <Select
-                                            label="Wait Interval (Days)"
-                                            options={retryIntervalOptions}
-                                            value={retryInterval}
-                                            onChange={handleRetryIntervalChange}
-                                            disabled={!enabled}
-                                        />
-                                    </div>
-                                </div>
-                                
-                                <div style={{ marginTop: '24px' }}>
+                <div className={`recovery-logic-container ${enabled ? 'active' : 'disabled'}`}>
+                    {/* Section 2: Strategy */}
+                    <div className="settings-row">
+                        <div className="settings-info">
+                            <h2 className="section-title">Retry Strategy</h2>
+                            <p className="section-desc">
+                                Configure the intensity and timing of recovery attempts. 
+                                <br/><br/>
+                                <strong style={{ color: THEME_COLOR }}>Tip:</strong> Most successful stores use 3 attempts with 3-day intervals.
+                            </p>
+                        </div>
+                        <div className="settings-card">
+                            <div className="card-content">
+                                <div className="input-group">
                                     <Select
-                                        label="Final Fallback Action"
-                                        options={fallbackActionOptions}
-                                        value={fallbackAction}
-                                        onChange={handleFallbackActionChange}
-                                        helpText="What should happen to the subscription if all recovery attempts fail?"
+                                        label="Number of Recovery Attempts"
+                                        options={retryAttemptsOptions}
+                                        value={retryAttempts}
+                                        onChange={handleRetryAttemptsChange}
                                         disabled={!enabled}
                                     />
                                 </div>
-                            </s-section>
+                                <div className="input-group" style={{ marginTop: '20px' }}>
+                                    <Select
+                                        label="Interval Between Retries"
+                                        options={retryIntervalOptions}
+                                        value={retryInterval}
+                                        onChange={handleRetryIntervalChange}
+                                        disabled={!enabled}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-                            {/* Notifications */}
-                            <s-section className="theme-card">
-                                <s-heading>Communication</s-heading>
-                                <div className="notification-row">
+                    {/* Section 3: Fallback */}
+                    <div className="settings-row">
+                        <div className="settings-info">
+                            <h2 className="section-title">Fallback Action</h2>
+                            <p className="section-desc">
+                                Define what should happen automatically if all recovery attempts are exhausted and the payment is still not successful.
+                            </p>
+                        </div>
+                        <div className="settings-card">
+                            <div className="card-content">
+                                <Select
+                                    label="Final Resolution Action"
+                                    options={fallbackActionOptions}
+                                    value={fallbackAction}
+                                    onChange={handleFallbackActionChange}
+                                    disabled={!enabled}
+                                />
+                                <div className="action-hint">
+                                    {fallbackAction === 'skip' && "The failed order will be skipped, but the subscription will remain active for the next billing cycle."}
+                                    {fallbackAction === 'pause' && "The entire subscription will be placed on hold until the customer updates their payment info."}
+                                    {fallbackAction === 'cancel' && "The subscription will be permanently cancelled. Use with caution."}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Section 4: Notifications */}
+                    <div className="settings-row">
+                        <div className="settings-info">
+                            <h2 className="section-title">Communication</h2>
+                            <p className="section-desc">
+                                Keep your customers informed. Send automated emails when a payment fails to prompt them to update their billing details.
+                            </p>
+                        </div>
+                        <div className="settings-card">
+                            <div className="card-content">
+                                <div className="notification-toggle">
                                     <s-checkbox
                                         checked={sendNotifications}
                                         onChange={(e: any) => setSendNotifications(e.target.checked)}
-                                        label="Notify customers about payment failures"
+                                        label="Send automated payment failure emails"
                                         disabled={!enabled}
                                     />
-                                    
-                                    {sendNotifications && (
-                                        <div className="template-box">
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <div className="icon-circle">
-                                                    <Icon source={EditIcon} tone="base" />
-                                                </div>
-                                                <div>
-                                                    <s-text type="strong">Email Template</s-text>
-                                                    <s-text color="subdued" size="small">Customize the failure notice email</s-text>
-                                                </div>
-                                            </div>
-                                            <Link to="/app/email-settings" className="theme-link">
-                                                Edit Design
-                                            </Link>
-                                        </div>
-                                    )}
-                                </div>
-                            </s-section>
-                        </s-stack>
-                    </s-grid-item>
-
-                    {/* Right Column: Visual Journey */}
-                    <s-grid-item gridColumn="span 4">
-                        <div className="sticky-preview">
-                            <s-box padding="large" borderWidth="base" borderRadius="large" background="white" className="preview-card">
-                                <div className="preview-header">
-                                    <s-text type="strong">Recovery Journey</s-text>
-                                    <div className="live-indicator">
-                                        <span className="dot"></span> LIVE PREVIEW
-                                    </div>
                                 </div>
                                 
-                                <div className="timeline">
-                                    <div className="timeline-item start">
-                                        <div className="timeline-marker failure">!</div>
-                                        <div className="timeline-content">
-                                            <s-text type="strong">Payment Failed</s-text>
-                                            <s-text color="subdued" size="small">Day 0</s-text>
-                                        </div>
-                                    </div>
-
-                                    {[...Array(Math.min(Number(retryAttempts), 3))].map((_, i) => (
-                                        <div key={i} className="timeline-item retry">
-                                            <div className="timeline-line"></div>
-                                            <div className="timeline-marker theme"></div>
-                                            <div className="timeline-content">
-                                                <s-text type="strong">Retry #{i + 1}</s-text>
-                                                <s-text color="subdued" size="small">Day {(i + 1) * Number(retryInterval)}</s-text>
+                                {sendNotifications && (
+                                    <Link to="/app/email-settings" className="email-config-btn">
+                                        <div className="btn-inner">
+                                            <div className="icon-wrap">
+                                                <Icon source={EditIcon} tone="base" />
                                             </div>
+                                            <span>Customize Email Template</span>
                                         </div>
-                                    ))}
-
-                                    {Number(retryAttempts) > 3 && (
-                                        <div className="timeline-more">
-                                            <div className="timeline-line"></div>
-                                            <span>+ {Number(retryAttempts) - 3} more attempts</span>
-                                        </div>
-                                    )}
-
-                                    <div className="timeline-item end">
-                                        <div className="timeline-line"></div>
-                                        <div className="timeline-marker fallback"></div>
-                                        <div className="timeline-content">
-                                            <s-text type="strong">Resolution</s-text>
-                                            <s-text color="subdued" size="small">
-                                                {fallbackAction === 'skip' ? 'Skip Order' : fallbackAction === 'pause' ? 'Pause Sub' : 'Cancel Sub'}
-                                            </s-text>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pro-tip-box">
-                                    <Icon source={AlertBubbleIcon} tone="info" />
-                                    <s-text size="small">
-                                        <strong>Expert Tip:</strong> Retrying every 3 days is optimal for credit card updates.
-                                    </s-text>
-                                </div>
-                            </s-box>
-
-                            <div className="support-footer">
-                                <s-text color="subdued">Need assistance? <Link to="/app/help" className="theme-link">Contact Support</Link></s-text>
+                                        <svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M12.72 10l-4.22 4.22a.75.75 0 101.06 1.06l4.75-4.75a.75.75 0 000-1.06l-4.75-4.75a.75.75 0 00-1.06 1.06L12.72 10z"/></svg>
+                                    </Link>
+                                )}
                             </div>
                         </div>
-                    </s-grid-item>
-                </s-grid>
+                    </div>
+                </div>
+
+                <div className="footer-area">
+                    <p>Feature part of your <strong>Pro Plan</strong> subscription. <Link to="/app/help">Learn more about payment recovery</Link></p>
+                </div>
             </div>
 
             <style>{`
-                .payment-recovery-wrapper {
-                    margin-top: 24px;
-                    padding-bottom: 60px;
+                .recovery-settings-layout {
+                    max-width: 1000px;
+                    margin: 32px auto 60px;
+                    padding: 0 20px;
                 }
 
-                .theme-card {
-                    background: white;
-                    border-radius: 12px !important;
-                    border: 1px solid #ebebeb !important;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.02) !important;
-                    padding: 24px !important;
-                    transition: all 0.2s ease;
-                }
-
-                .theme-card:hover {
-                    border-color: ${THEME_COLOR}40 !important;
-                    box-shadow: 0 4px 12px rgba(81, 57, 92, 0.05) !important;
-                }
-
-                .pro-badge {
-                    background: ${THEME_COLOR}15 !important;
-                    color: ${THEME_COLOR} !important;
-                    font-weight: 700 !important;
-                    letter-spacing: 0.05em;
-                }
-
-                .primary-theme-btn {
-                    background: ${THEME_COLOR} !important;
-                    border-color: ${THEME_COLOR} !important;
-                    color: white !important;
-                }
-
-                .settings-grid {
+                .settings-row {
                     display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 24px;
-                    margin-top: 20px;
+                    grid-template-columns: 1fr 1.5fr;
+                    gap: 40px;
+                    margin-bottom: 40px;
+                    align-items: flex-start;
                 }
 
-                .notification-row {
-                    margin-top: 16px;
+                .settings-info {
+                    padding-top: 8px;
                 }
 
-                .template-box {
-                    margin-top: 20px;
-                    padding: 16px;
-                    background: #fcfaff;
-                    border: 1px solid ${THEME_COLOR}20;
-                    border-radius: 12px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
+                .section-title {
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: #1a1c1d;
+                    margin-bottom: 8px;
                 }
 
-                .icon-circle {
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 50%;
-                    background: ${THEME_COLOR}10;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    color: ${THEME_COLOR};
+                .section-desc {
+                    font-size: 14px;
+                    color: #6d7175;
+                    line-height: 1.6;
                 }
 
-                .theme-link {
-                    color: ${THEME_COLOR} !important;
-                    font-weight: 600;
-                    text-decoration: none;
-                }
-
-                .theme-link:hover {
-                    text-decoration: underline;
-                }
-
-                .sticky-preview {
-                    position: sticky;
-                    top: 24px;
-                }
-
-                .preview-card {
-                    border: 1px solid #ebebeb !important;
-                    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05) !important;
-                }
-
-                .preview-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 24px;
-                    padding-bottom: 12px;
-                    border-bottom: 1px solid #f0f0f0;
-                }
-
-                .live-indicator {
-                    font-size: 10px;
-                    font-weight: 800;
-                    color: #10b981;
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                }
-
-                .live-indicator .dot {
-                    width: 6px;
-                    height: 6px;
-                    background: #10b981;
-                    border-radius: 50%;
-                    animation: pulse 2s infinite;
-                }
-
-                @keyframes pulse {
-                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-                    70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-                }
-
-                .timeline {
-                    padding-left: 12px;
-                    margin-bottom: 24px;
-                }
-
-                .timeline-item {
-                    display: flex;
-                    gap: 20px;
-                    position: relative;
-                }
-
-                .timeline-line {
-                    position: absolute;
-                    left: 9px;
-                    top: -24px;
-                    bottom: 16px;
-                    width: 2px;
-                    background: #f0f0f0;
-                    z-index: 1;
-                }
-
-                .timeline-marker {
-                    width: 20px;
-                    height: 20px;
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 10px;
-                    font-weight: bold;
-                    z-index: 2;
-                    margin-top: 4px;
+                .settings-card {
                     background: white;
-                    border: 2px solid #ddd;
+                    border: 1px solid #e1e3e5;
+                    border-radius: 12px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                    overflow: hidden;
                 }
 
-                .timeline-marker.failure { background: #fee2e2; color: #ef4444; border-color: #fca5a5; }
-                .timeline-marker.theme { background: ${THEME_COLOR}; border-color: ${THEME_COLOR}; }
-                .timeline-marker.fallback { background: #374151; border-color: #374151; }
+                .card-content {
+                    padding: 24px;
+                }
 
-                .timeline-content {
-                    padding-bottom: 24px;
+                .toggle-box {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 20px;
+                }
+
+                .toggle-text {
                     display: flex;
                     flex-direction: column;
+                    gap: 4px;
                 }
 
-                .timeline-more {
-                    position: relative;
-                    padding-left: 40px;
-                    padding-bottom: 24px;
-                    font-size: 12px;
-                    color: #999;
+                .toggle-text strong {
+                    font-size: 15px;
+                    color: #1a1c1d;
+                }
+
+                .toggle-text span {
+                    font-size: 13px;
+                    color: #6d7175;
+                }
+
+                .recovery-logic-container.disabled {
+                    opacity: 0.5;
+                    pointer-events: none;
+                }
+
+                .action-hint {
+                    margin-top: 12px;
+                    font-size: 13px;
+                    color: ${THEME_COLOR};
                     font-style: italic;
+                    padding: 10px 14px;
+                    background: ${THEME_COLOR}08;
+                    border-radius: 6px;
+                    border-left: 3px solid ${THEME_COLOR};
                 }
 
-                .pro-tip-box {
-                    background: #f0f7ff;
-                    padding: 16px;
-                    border-radius: 12px;
+                .email-config-btn {
+                    margin-top: 20px;
                     display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 16px;
+                    background: #fcfaff;
+                    border: 1px solid ${THEME_COLOR}15;
+                    border-radius: 10px;
+                    text-decoration: none;
+                    color: ${THEME_COLOR};
+                    font-weight: 600;
+                    transition: all 0.2s;
+                }
+
+                .email-config-btn:hover {
+                    background: ${THEME_COLOR}08;
+                    border-color: ${THEME_COLOR}30;
+                }
+
+                .btn-inner {
+                    display: flex;
+                    align-items: center;
                     gap: 12px;
-                    border: 1px solid #e0efff;
                 }
 
-                .support-footer {
-                    margin-top: 24px;
+                .icon-wrap {
+                    width: 32px;
+                    height: 32px;
+                    background: white;
+                    border-radius: 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+
+                .footer-area {
                     text-align: center;
+                    padding-top: 40px;
+                    border-top: 1px solid #e1e3e5;
+                    color: #6d7175;
+                    font-size: 14px;
                 }
 
-                /* Polaris Select overrides */
-                .Polaris-Select__Backdrop {
-                    border-radius: 8px !important;
+                .footer-area a {
+                    color: ${THEME_COLOR};
+                    text-decoration: none;
+                    font-weight: 600;
                 }
-                
-                .Polaris-Select:focus-within .Polaris-Select__Backdrop {
+
+                /* Custom Theme Styling */
+                .main-save-btn {
+                    background: ${THEME_COLOR} !important;
                     border-color: ${THEME_COLOR} !important;
-                    box-shadow: 0 0 0 1px ${THEME_COLOR} !important;
+                }
+
+                /* Custom Switch */
+                .custom-switch {
+                    position: relative;
+                    display: inline-block;
+                    width: 44px;
+                    height: 24px;
+                    flex-shrink: 0;
+                }
+
+                .custom-switch input { opacity: 0; width: 0; height: 0; }
+
+                .custom-slider {
+                    position: absolute;
+                    cursor: pointer;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background-color: #cbd5e0;
+                    transition: .4s;
+                    border-radius: 34px;
+                }
+
+                .custom-slider:before {
+                    position: absolute;
+                    content: "";
+                    height: 18px; width: 18px;
+                    left: 3px; bottom: 3px;
+                    background-color: white;
+                    transition: .4s;
+                    border-radius: 50%;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                }
+
+                input:checked + .custom-slider { background-color: ${THEME_COLOR}; }
+                input:checked + .custom-slider:before { transform: translateX(20px); }
+
+                @media (max-width: 768px) {
+                    .settings-row {
+                        grid-template-columns: 1fr;
+                        gap: 16px;
+                    }
                 }
             `}</style>
         </s-page>
