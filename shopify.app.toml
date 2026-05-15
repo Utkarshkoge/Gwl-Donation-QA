@@ -43,7 +43,7 @@ api_version = "2026-04"
   uri = "/webhooks/subscription_contracts/update"
 
 [access_scopes]
-scopes = "read_customers,read_metaobjects,read_orders,read_publications,read_purchase_options,read_shopify_payments_payouts,write_customers,write_metaobject_definitions,write_metaobjects,write_orders,write_products,write_publications,write_purchase_options,read_own_subscription_contracts,write_own_subscription_contracts,read_draft_orders,write_draft_orders,read_subscription_contracts,write_subscription_contracts"
+scopes = "read_customers,read_metaobjects,read_orders,read_publications,read_purchase_options,read_shopify_payments_payouts,write_customers,write_metaobject_definitions,write_metaobjects,write_orders,write_products,write_publications,write_purchase_options,read_own_subscription_contracts,write_own_subscription_contracts,read_draft_orders,write_draft_orders"
 
 [auth]
 redirect_urls = [
