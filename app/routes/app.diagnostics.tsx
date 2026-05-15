@@ -15,6 +15,7 @@ import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  const { default: db } = await import("../db.server");
 
   // Check current webhooks via GraphQL
   const response = await admin.graphql(
@@ -34,16 +35,42 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           }
         }
       }
+      subscriptionContracts(first: 5, reverse: true) {
+        edges {
+          node {
+            id
+            status
+            originOrder {
+              name
+            }
+          }
+        }
+      }
     }`
   );
 
   const jsonResponse = await response.json();
   const webhooks = jsonResponse.data?.webhookSubscriptions?.edges?.map((e: any) => e.node) || [];
+  const nativeContracts = jsonResponse.data?.subscriptionContracts?.edges?.map((e: any) => e.node) || [];
+
+  // Get local DB sync logs
+  const syncLogs = await db.recurringDonationLog.findMany({
+    where: { shop: session.shop },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: {
+      orderName: true,
+      subscriptionContractId: true,
+      createdAt: true,
+    }
+  });
 
   return {
     shop: session.shop,
     scopes: session.scope,
     webhooks,
+    nativeContracts,
+    syncLogs,
   };
 };
 
@@ -55,8 +82,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (action === "register") {
     try {
       const results = await shopify.registerWebhooks({ session });
-      console.log(`[Diagnostics] Manual webhook registration for ${session.shop}:`, results);
-      return { success: true, message: "Webhook registration attempt completed. Check server logs for details." };
+      return { success: true, message: "Webhook registration attempt completed. Check server logs." };
     } catch (e: any) {
       return { success: false, message: `Registration failed: ${e.message}` };
     }
@@ -66,7 +92,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function DiagnosticsPage() {
-  const { shop, scopes, webhooks } = useLoaderData<typeof loader>();
+  const { shop, scopes, webhooks, nativeContracts, syncLogs } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<any>();
 
   const isLoading = fetcher.state !== "idle";
@@ -83,10 +109,51 @@ export default function DiagnosticsPage() {
                 <Text as="p"><strong>Active Scopes:</strong></Text>
                 <Text as="p" tone="subdued">{scopes}</Text>
               </Box>
-              {!scopes?.includes("read_own_subscription_contracts") && (
-                <Banner tone="critical" title="Missing Subscription Scopes">
-                  <p>The session does not have the required subscription scopes. Please re-install or update the app to grant permissions.</p>
-                </Banner>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        <Layout.Section variant="oneHalf">
+          <Card title="Raw Shopify Contracts">
+             <BlockStack gap="400">
+                <Text variant="headingMd" as="h2">Native Shopify API Data</Text>
+                <Text as="p" tone="subdued">Top 5 recent contracts from Shopify GraphQL</Text>
+                {nativeContracts.length > 0 ? (
+                  <List type="bullet">
+                    {nativeContracts.map((c: any) => (
+                      <List.Item key={c.id}>
+                        <strong>Order {c.originOrder?.name || "N/A"}:</strong> <br/>
+                        <code>{c.id}</code> ({c.status})
+                      </List.Item>
+                    ))}
+                  </List>
+                ) : (
+                  <Text as="p" tone="critical">No native contracts returned from Shopify API.</Text>
+                )}
+             </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        <Layout.Section variant="oneHalf">
+          <Card>
+            <BlockStack gap="400">
+              <Text variant="headingMd" as="h2">Database Sync Logs</Text>
+              <Text as="p" tone="subdued">Latest 10 records in recurringDonationLog</Text>
+              {syncLogs.length > 0 ? (
+                <List type="bullet">
+                  {syncLogs.map((log: any, i: number) => (
+                    <List.Item key={i}>
+                      <strong>{log.orderName}:</strong> <br/>
+                      {log.subscriptionContractId ? (
+                        <code>{log.subscriptionContractId}</code>
+                      ) : (
+                        <Text as="span" tone="critical">NULL (Sync Pending)</Text>
+                      )}
+                    </List.Item>
+                  ))}
+                </List>
+              ) : (
+                <Text as="p" tone="subdued">No local logs found.</Text>
               )}
             </BlockStack>
           </Card>
@@ -116,17 +183,13 @@ export default function DiagnosticsPage() {
                 </Banner>
               )}
 
-              {webhooks.length > 0 ? (
-                <List type="bullet">
-                  {webhooks.map((wh: any) => (
-                    <List.Item key={wh.id}>
-                      <strong>{wh.topic}</strong> → {wh.endpoint.callbackUrl || wh.endpoint.__typename}
-                    </List.Item>
-                  ))}
-                </List>
-              ) : (
-                <Text as="p" tone="subdued">No webhooks found for this app.</Text>
-              )}
+              <List type="bullet">
+                {webhooks.map((wh: any) => (
+                  <List.Item key={wh.id}>
+                    <strong>{wh.topic}</strong> → {wh.endpoint.callbackUrl || wh.endpoint.__typename}
+                  </List.Item>
+                ))}
+              </List>
             </BlockStack>
           </Card>
         </Layout.Section>
