@@ -89,6 +89,59 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  if (action === "sync") {
+    try {
+      // Find all records with NULL contract ID
+      const pending = await db.recurringDonationLog.findMany({
+        where: { shop: session.shop, subscriptionContractId: null },
+        take: 20
+      });
+
+      if (pending.length === 0) return { success: true, message: "No pending records found." };
+
+      let syncCount = 0;
+      
+      // Fetch recent contracts from Shopify to match
+      const response = await admin.graphql(
+        `#graphql
+        query {
+          subscriptionContracts(first: 50, reverse: true) {
+            edges {
+              node {
+                id
+                originOrder {
+                  id
+                  name
+                }
+              }
+            }
+          }
+        }`
+      );
+      const json = await response.json();
+      const contracts = json.data?.subscriptionContracts?.edges?.map((e: any) => e.node) || [];
+
+      for (const log of pending) {
+        const match = contracts.find((c: any) => 
+          c.originOrder?.id === log.orderId || 
+          c.originOrder?.name === log.orderNumber
+        );
+
+        if (match) {
+          await db.recurringDonationLog.update({
+            where: { orderId: log.orderId },
+            data: { subscriptionContractId: match.id }
+          });
+          syncCount++;
+        }
+      }
+
+      return { success: true, message: `Successfully synced ${syncCount} of ${pending.length} pending records.` };
+    } catch (e: any) {
+      return { success: false, message: `Sync failed: ${e.message}` };
+    }
+  }
+
   return { success: false, message: "Unknown action" };
 };
 
@@ -138,7 +191,20 @@ export default function DiagnosticsPage() {
         <Layout.Section variant="oneHalf">
           <Card>
             <BlockStack gap="400">
-              <Text variant="headingMd" as="h2">Database Sync Logs</Text>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text variant="headingMd" as="h2">Database Sync Logs</Text>
+                <fetcher.Form method="post">
+                  <Button 
+                    name="action" 
+                    value="sync" 
+                    variant="primary" 
+                    loading={isLoading}
+                    submit
+                  >
+                    Sync All Missing Contracts
+                  </Button>
+                </fetcher.Form>
+              </div>
               <Text as="p" tone="subdued">Latest 10 records in recurringDonationLog</Text>
               {syncLogs.length > 0 ? (
                 <div style={{ maxHeight: '400px', overflowY: 'auto' }}>

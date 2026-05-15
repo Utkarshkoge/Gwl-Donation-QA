@@ -7,6 +7,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     console.log(`[SubscriptionContract] ⚡ Webhook received — topic: ${topic}, shop: ${shop}`);
 
+    // Wait 2 seconds to allow ORDERS_CREATE webhook to finish saving the order
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
     if (topic !== "SUBSCRIPTION_CONTRACTS_CREATE") {
         console.warn(`[SubscriptionContract] Unexpected topic: ${topic}`);
         return new Response(null, { status: 400 });
