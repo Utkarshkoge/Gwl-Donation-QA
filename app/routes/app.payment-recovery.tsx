@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
     Icon,
     Select,
@@ -8,51 +8,88 @@ import {
 } from "@shopify/polaris-icons";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { Link, useLoaderData, useFetcher } from "react-router";
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs, ActionFunctionArgs, HeadersFunction } from "react-router";
 import { authenticate } from "../shopify.server";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 
+// ─── Defaults ───────────────────────────────────────────────
+const DEFAULT_SETTINGS = {
+    enabled: true,
+    retryAttempts: 3,
+    retryInterval: 3,
+    fallbackAction: "skip",
+    sendNotifications: true,
+};
+
+const VALID_FALLBACK_ACTIONS = ["pause", "cancel", "skip"];
+
+// ─── Loader ─────────────────────────────────────────────────
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { session } = await authenticate.admin(request);
     const shop = session.shop;
 
-    const settings = await prisma.paymentRecoverySettings.findUnique({
-        where: { shop },
-    });
+    try {
+        const settings = await prisma.paymentRecoverySettings.findUnique({
+            where: { shop },
+        });
 
-    return {
-        settings: settings ?? {
-            enabled: true,
-            retryAttempts: 3,
-            retryInterval: 3,
-            fallbackAction: "skip",
-            sendNotifications: true,
-        }
-    };
+        return {
+            settings: settings ?? { ...DEFAULT_SETTINGS },
+        };
+    } catch (error) {
+        console.error("[PaymentRecovery] Loader error:", error);
+        return {
+            settings: { ...DEFAULT_SETTINGS },
+        };
+    }
 };
 
+// ─── Action ─────────────────────────────────────────────────
 export const action = async ({ request }: ActionFunctionArgs) => {
     const { session } = await authenticate.admin(request);
     const shop = session.shop;
     const formData = await request.formData();
 
+    // Parse and validate
+    const retryAttempts = parseInt(formData.get("retryAttempts") as string);
+    const retryInterval = parseInt(formData.get("retryInterval") as string);
+    const fallbackAction = (formData.get("fallbackAction") as string) || "skip";
+
+    // Server-side validation
+    if (isNaN(retryAttempts) || retryAttempts < 1 || retryAttempts > 10) {
+        return { status: "error", message: "Retry attempts must be between 1 and 10" };
+    }
+    if (isNaN(retryInterval) || retryInterval < 1 || retryInterval > 10) {
+        return { status: "error", message: "Retry interval must be between 1 and 10 days" };
+    }
+    if (!VALID_FALLBACK_ACTIONS.includes(fallbackAction)) {
+        return { status: "error", message: "Invalid fallback action selected" };
+    }
+
     const data = {
         enabled: formData.get("enabled") === "true",
-        retryAttempts: parseInt(formData.get("retryAttempts") as string) || 3,
-        retryInterval: parseInt(formData.get("retryInterval") as string) || 3,
-        fallbackAction: (formData.get("fallbackAction") as string) || "skip",
+        retryAttempts,
+        retryInterval,
+        fallbackAction,
         sendNotifications: formData.get("sendNotifications") === "true",
     };
 
-    await prisma.paymentRecoverySettings.upsert({
-        where: { shop },
-        update: data,
-        create: { shop, ...data },
-    });
+    try {
+        await prisma.paymentRecoverySettings.upsert({
+            where: { shop },
+            update: data,
+            create: { shop, ...data },
+        });
 
-    return { status: "success" };
+        return { status: "success", message: "Recovery settings saved successfully" };
+    } catch (error) {
+        console.error("[PaymentRecovery] Action error:", error);
+        return { status: "error", message: "Failed to save settings. Please try again." };
+    }
 };
 
+// ─── Component ──────────────────────────────────────────────
 export default function PaymentRecoveryPage() {
     const { settings: savedSettings } = useLoaderData<typeof loader>();
     const fetcher = useFetcher<typeof action>();
@@ -86,9 +123,20 @@ export default function PaymentRecoveryPage() {
 
     const isSaving = fetcher.state === "submitting";
 
+    // Toast handling for success and error states
+    const lastHandledRef = useRef<string | null>(null);
     useEffect(() => {
-        if (fetcher.state === "idle" && fetcher.data?.status === "success") {
-            shopify.toast.show("Recovery settings saved successfully");
+        if (fetcher.state === "idle" && fetcher.data) {
+            if (lastHandledRef.current !== "handled") {
+                lastHandledRef.current = "handled";
+                if (fetcher.data.status === "success") {
+                    shopify.toast.show(fetcher.data.message || "Recovery settings saved successfully");
+                } else if (fetcher.data.status === "error") {
+                    shopify.toast.show(fetcher.data.message || "Failed to save settings", { isError: true } as any);
+                }
+            }
+        } else if (fetcher.state === "submitting") {
+            lastHandledRef.current = "submitting";
         }
     }, [fetcher.state, fetcher.data, shopify]);
 
@@ -436,3 +484,7 @@ export default function PaymentRecoveryPage() {
         </s-page>
     );
 }
+
+export const headers: HeadersFunction = (headersArgs) => {
+    return boundary.headers(headersArgs);
+};
