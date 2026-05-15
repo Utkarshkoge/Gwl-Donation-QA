@@ -35,6 +35,7 @@ export default function App() {
 
                     <Link to="/app/recurring-subscriptions">Subscription Management</Link>
                     <Link to="/app/payment-recovery">Payment Recovery</Link>
+                    <Link to="/app/billing-attempts">Billing Attempts</Link>
                     <Link to="/app/pricing">Pricing Plans</Link>
 
                     <Link to="/app/help">Help</Link>

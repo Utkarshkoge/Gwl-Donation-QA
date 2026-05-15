@@ -147,6 +147,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                     }
 
                     results.recovered++;
+
+                    // Log successful cron retry to BillingAttemptLog
+                    try {
+                        await db.billingAttemptLog.create({
+                            data: {
+                                shop: recovery.shop,
+                                subscriptionContractId: fullGid,
+                                billingAttemptId: billingAttempt.id || null,
+                                source: "cron_retry",
+                                status: "success",
+                                orderId: billingAttempt.order?.id || null,
+                                orderNumber: billingAttempt.order?.name || null,
+                                customerEmail: recovery.customerEmail,
+                                customerName: recovery.customerName,
+                                amount: recovery.amount,
+                                currency: recovery.currency,
+                                donationName: recovery.donationName,
+                                frequency: recovery.frequency,
+                                retryNumber: recovery.retryCount + 1,
+                                idempotencyKey,
+                            },
+                        });
+                    } catch (logErr) {
+                        console.error(`[CronRecovery] Failed to log successful attempt:`, logErr);
+                    }
                 } else if (billingAttempt?.errorMessage) {
                     // Payment failed again
                     console.log(`[CronRecovery] ❌ Retry failed: ${billingAttempt.errorMessage}`);
@@ -157,6 +182,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                         results.fallbacksExecuted++;
                     } else {
                         results.retrying++;
+                    }
+
+                    // Log failed cron retry to BillingAttemptLog
+                    try {
+                        await db.billingAttemptLog.create({
+                            data: {
+                                shop: recovery.shop,
+                                subscriptionContractId: fullGid,
+                                billingAttemptId: billingAttempt?.id || null,
+                                source: "cron_retry",
+                                status: "failed",
+                                errorMessage: billingAttempt.errorMessage,
+                                customerEmail: recovery.customerEmail,
+                                customerName: recovery.customerName,
+                                amount: recovery.amount,
+                                currency: recovery.currency,
+                                donationName: recovery.donationName,
+                                frequency: recovery.frequency,
+                                retryNumber: recovery.retryCount + 1,
+                                idempotencyKey,
+                                rawPayload: JSON.stringify(billingJson).substring(0, 4000),
+                            },
+                        });
+                    } catch (logErr) {
+                        console.error(`[CronRecovery] Failed to log failed attempt:`, logErr);
                     }
                 } else {
                     // Billing attempt created but not yet ready (async processing)
@@ -170,6 +220,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                         },
                     });
                     results.retrying++;
+
+                    // Log pending cron retry to BillingAttemptLog
+                    try {
+                        await db.billingAttemptLog.create({
+                            data: {
+                                shop: recovery.shop,
+                                subscriptionContractId: fullGid,
+                                billingAttemptId: billingAttempt?.id || null,
+                                source: "cron_retry",
+                                status: "pending",
+                                customerEmail: recovery.customerEmail,
+                                customerName: recovery.customerName,
+                                amount: recovery.amount,
+                                currency: recovery.currency,
+                                donationName: recovery.donationName,
+                                frequency: recovery.frequency,
+                                retryNumber: recovery.retryCount + 1,
+                                idempotencyKey,
+                            },
+                        });
+                    } catch (logErr) {
+                        console.error(`[CronRecovery] Failed to log pending attempt:`, logErr);
+                    }
                 }
 
             } catch (shopErr: any) {
@@ -185,6 +258,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     console.log(`[CronRecovery] Complete. Processed: ${results.processed}, Recovered: ${results.recovered}, Retrying: ${results.retrying}, Exhausted: ${results.exhausted}`);
+
+    // ── Data Retention: Purge billing attempt logs older than 180 days ──
+    try {
+        const retentionDate = new Date();
+        retentionDate.setDate(retentionDate.getDate() - 180);
+
+        const purged = await db.billingAttemptLog.deleteMany({
+            where: { createdAt: { lt: retentionDate } },
+        });
+
+        if (purged.count > 0) {
+            console.log(`[CronRecovery] Data retention: Purged ${purged.count} billing attempt logs older than 180 days.`);
+        }
+
+        // Also purge fully resolved PaymentRecoveryLogs older than 180 days
+        const purgedRecovery = await db.paymentRecoveryLog.deleteMany({
+            where: {
+                createdAt: { lt: retentionDate },
+                status: { in: ["recovered", "fallback_executed"] },
+            },
+        });
+
+        if (purgedRecovery.count > 0) {
+            console.log(`[CronRecovery] Data retention: Purged ${purgedRecovery.count} resolved recovery logs older than 180 days.`);
+        }
+    } catch (retentionErr) {
+        console.error(`[CronRecovery] Data retention cleanup error:`, retentionErr);
+    }
 
     return new Response(JSON.stringify({
         success: true,

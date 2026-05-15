@@ -53,6 +53,10 @@ const shopify = shopifyApp({
       deliveryMethod: DeliveryMethod.Http,
       callbackUrl: "/webhooks/subscription_billing_attempts/failure",
     },
+    SUBSCRIPTION_BILLING_ATTEMPTS_SUCCESS: {
+      deliveryMethod: DeliveryMethod.Http,
+      callbackUrl: "/webhooks/subscription_billing_attempts/success",
+    },
   },
   billing: {
     [MONTHLY_PLAN_BASIC]: {

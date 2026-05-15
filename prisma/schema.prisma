@@ -302,3 +302,31 @@ model PaymentRecoveryLog {
   @@unique([shop, subscriptionContractId])
   @@index([status, nextRetryDate])
 }
+
+model BillingAttemptLog {
+  id                     String    @id @default(uuid())
+  shop                   String
+  subscriptionContractId String
+  billingCycleIndex      Int?
+  billingAttemptId       String?   @unique           // Shopify billing attempt GID — dedup key
+  source                 String    @default("webhook") // "webhook" | "cron_retry" | "manual"
+  status                 String    @default("failed")  // "failed" | "success" | "pending"
+  errorCode              String?
+  errorMessage           String?
+  orderId                String?                       // Populated on success
+  orderNumber            String?                       // Populated on success
+  customerEmail          String?
+  customerName           String?
+  amount                 Float     @default(0)
+  currency               String    @default("USD")
+  donationName           String?
+  frequency              String?
+  retryNumber            Int       @default(0)         // Which retry attempt (0 = initial failure)
+  idempotencyKey         String?
+  rawPayload             String?                       // Raw webhook payload — stored for failures only
+  createdAt              DateTime  @default(now())
+
+  @@index([shop, subscriptionContractId])
+  @@index([shop, status])
+  @@index([createdAt])
+}

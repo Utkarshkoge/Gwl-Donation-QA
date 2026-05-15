@@ -22,6 +22,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const errorCode = attempt.error_code || attempt.error?.code || "unknown";
         const errorMessage = attempt.error_message || attempt.error?.message || "Payment failed";
 
+        // Extract billing attempt ID for dedup protection
+        const billingAttemptId: string | null =
+            attempt.admin_graphql_api_id || attempt.id
+                ? (attempt.admin_graphql_api_id || `gid://shopify/SubscriptionBillingAttempt/${attempt.id}`)
+                : null;
+
+        // Dedup: skip if we already processed this exact billing attempt
+        if (billingAttemptId) {
+            const existingAttempt = await db.billingAttemptLog.findUnique({
+                where: { billingAttemptId },
+            });
+            if (existingAttempt) {
+                console.log(`[PaymentRecovery] Duplicate webhook — already logged billingAttemptId ${billingAttemptId}`);
+                return new Response("OK - duplicate", { status: 200 });
+            }
+        }
+
         // 1. Fetch merchant's recovery settings
         const recoverySettings = await db.paymentRecoverySettings.findUnique({
             where: { shop },
@@ -161,6 +178,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
 
         console.log(`[PaymentRecovery] Recovery log ${recoveryLog.id} — retry ${recoveryLog.retryCount}/${recoveryLog.maxRetries}, next retry: ${nextRetryDate.toISOString()}`);
+
+        // ── Log to BillingAttemptLog for granular attempt-level tracking ──
+        try {
+            await db.billingAttemptLog.create({
+                data: {
+                    shop,
+                    subscriptionContractId: normalizedContractId,
+                    billingAttemptId,
+                    source: "webhook",
+                    status: "failed",
+                    errorCode,
+                    errorMessage,
+                    orderId: originOrder?.id || null,
+                    orderNumber: originOrder?.name || null,
+                    customerEmail,
+                    customerName,
+                    amount,
+                    currency,
+                    donationName,
+                    frequency,
+                    retryNumber: recoveryLog.retryCount,
+                    rawPayload: JSON.stringify(payload).substring(0, 4000), // Store raw payload for failures only
+                },
+            });
+            console.log(`[PaymentRecovery] BillingAttemptLog entry created for ${normalizedContractId}`);
+        } catch (logErr) {
+            console.error(`[PaymentRecovery] Failed to create BillingAttemptLog:`, logErr);
+        }
 
         // 5. Send failure notification email
         if (recoverySettings.sendNotifications && customerEmail) {
