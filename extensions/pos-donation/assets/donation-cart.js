@@ -186,8 +186,9 @@
    * @param {number} quantity
    * @param {Object} properties  Line item properties key→value
    * @param {string} [returnTo]  Where Shopify redirects after add (default: /cart)
+   * @param {string} [sellingPlanId]  Optional Shopify selling plan ID for subscriptions
    */
-  function cartAddViaForm(numericVariantId, quantity, properties, returnTo) {
+  function cartAddViaForm(numericVariantId, quantity, properties, returnTo, sellingPlanId) {
     const form = document.createElement("form");
     form.method = "POST";
     form.action = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root ? window.Shopify.routes.root : "/") + "cart/add";
@@ -203,6 +204,10 @@
 
     append("id", numericVariantId);
     append("quantity", String(quantity));
+    if (sellingPlanId) {
+      // Pass the native selling_plan so Shopify creates a SubscriptionContract
+      append("selling_plan", sellingPlanId);
+    }
     if (properties) {
       for (const [k, v] of Object.entries(properties)) {
         append(`properties[${k}]`, v);
@@ -269,6 +274,8 @@
     const allowCustom = container.dataset.allowCustom !== "false";
     const campaigns = campaignData.campaigns || [];
     const disabled = campaignData.disabled === true;
+    // Recurring config from the API — contains monthlyPlanId / weeklyPlanId
+    const recurringConfig = campaignData.recurringConfig || null;
 
     if (disabled || !campaigns.length) {
       container.style.display = "none";
@@ -279,6 +286,7 @@
     let activeCampaign = campaigns[0];
     let selectedVariantId = null;
     let selectedAmount = null;
+    let selectedSellingPlanId = null;
 
     /**
      * Full re-render of the widget for the active campaign.
@@ -408,6 +416,24 @@
       }
       html += "</div>";
 
+      /* ── Recurring frequency selector (if campaign supports it) ── */
+      if (activeCampaign.isRecurringEnabled && recurringConfig) {
+        html += '<div class="donation-cart-recurring-row" style="margin-top:16px; padding-top:16px; border-top:1px dashed #e1e3e5;">';
+        html += '<label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:#1a1c1d; cursor:pointer;">';
+        html += '<input type="checkbox" class="donation-cart-recurring-toggle" style="accent-color:#008060; width:16px; height:16px;" />';
+        html += 'Make this a recurring donation';
+        html += '</label>';
+        html += '<div class="donation-cart-frequency-select" style="display:none; margin-top:10px;">';
+        html += '<select class="donation-cart-freq-dropdown" style="width:100%; padding:8px 12px; border-radius:8px; border:1px solid #d0d0d0; font-size:14px; font-weight:600;">';
+        if (recurringConfig.monthlyPlanId) {
+          html += '<option value="' + recurringConfig.monthlyPlanId + '">Monthly</option>';
+        }
+        if (recurringConfig.weeklyPlanId) {
+          html += '<option value="' + recurringConfig.weeklyPlanId + '">Weekly</option>';
+        }
+        html += '</select></div></div>';
+      }
+
       html += "</div>"; // end info-col
       html += "</div>"; // end layout-wrap
 
@@ -433,7 +459,30 @@
           activeCampaign = campaigns.find((c) => c.id === e.target.value);
           selectedVariantId = null;
           selectedAmount = null;
+          selectedSellingPlanId = null;
           renderCampaign();
+        });
+      }
+
+      /* Recurring toggle & frequency selector */
+      const recurringToggle = content.querySelector(".donation-cart-recurring-toggle");
+      const freqSelectWrap = content.querySelector(".donation-cart-frequency-select");
+      const freqDropdown = content.querySelector(".donation-cart-freq-dropdown");
+
+      if (recurringToggle && freqSelectWrap && freqDropdown) {
+        recurringToggle.addEventListener("change", () => {
+          if (recurringToggle.checked) {
+            freqSelectWrap.style.display = "block";
+            selectedSellingPlanId = freqDropdown.value || null;
+          } else {
+            freqSelectWrap.style.display = "none";
+            selectedSellingPlanId = null;
+          }
+        });
+        freqDropdown.addEventListener("change", () => {
+          if (recurringToggle.checked) {
+            selectedSellingPlanId = freqDropdown.value || null;
+          }
         });
       }
 
@@ -513,6 +562,12 @@
         };
         if (isCustom) properties["Custom Amount"] = "true";
 
+        // If a recurring selling plan is selected, tag it in properties too
+        // (the native selling_plan param is passed separately to cartAddViaForm)
+        if (selectedSellingPlanId) {
+          properties["_selling_plan_id"] = selectedSellingPlanId;
+        }
+
         // ── Both custom and preset amounts: form POST to cart (bypasses AJAX cart lock / 409) ────
         const numericId = String(selectedVariantId).includes("/")
           ? String(selectedVariantId).split("/").pop()
@@ -537,8 +592,9 @@
         }
 
         // Step 2: add via form POST — no 409 possible
+        // Pass selectedSellingPlanId so Shopify creates a native SubscriptionContract
         setFeedback(feedback, donationLine ? "✓ Updating donation…" : "✓ Adding donation…", false);
-        cartAddViaForm(numericId, quantity, properties, "/cart");
+        cartAddViaForm(numericId, quantity, properties, "/cart", selectedSellingPlanId);
       });
 
       /* Remove */

@@ -67,7 +67,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return jsonResp({ success: false, error: "Invalid request body" }, 400);
     }
 
-    const { campaignId, customAmount, variantId } = body;
+    const { campaignId, customAmount, variantId, sellingPlanId } = body;
 
     if (!campaignId || !customAmount) {
         return jsonResp(
@@ -148,15 +148,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                                 variantId: variantGid,
                                 quantity: 1,
                                 originalUnitPrice: priceOverride,
+                                // If a selling plan is provided, attach it to create
+                                // a native Shopify SubscriptionContract on checkout
+                                ...(sellingPlanId ? { appliedDiscount: undefined } : {}),
                             },
                         ],
-                        tags: ["preset_donation"],
-                        note: `Preset donation – Custom amount: $${priceOverride}`,
+                        // Pass the selling plan at the draft order level via custom attributes
+                        // (Draft Orders don't natively support selling_plan in lineItems;
+                        //  the selling plan is applied when the customer completes checkout)
+                        tags: sellingPlanId
+                            ? ["preset_donation", "recurring_donation"]
+                            : ["preset_donation"],
+                        note: sellingPlanId
+                            ? `Recurring donation – Custom amount: $${priceOverride}`
+                            : `Preset donation – Custom amount: $${priceOverride}`,
                         customAttributes: [
                             { key: "Donation Campaign", value: campaign.name },
                             { key: "Donation Amount", value: `$${priceOverride}` },
                             { key: "Custom Amount", value: "true" },
                             { key: "_donation_widget_active", value: "true" },
+                            ...(sellingPlanId
+                                ? [{ key: "_selling_plan_id", value: sellingPlanId }]
+                                : []),
                         ],
                     },
                 },

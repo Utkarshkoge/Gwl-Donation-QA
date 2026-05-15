@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData, Link } from "react-router";
 import {
@@ -14,9 +14,10 @@ import {
     Box,
     EmptyState,
     Icon,
+    Banner,
+    List,
 } from "@shopify/polaris";
 import { useAppBridge } from "@shopify/app-bridge-react";
-import { useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import { performSubscriptionAction } from "../utils/subscription-actions.server";
 
@@ -25,70 +26,121 @@ import { performSubscriptionAction } from "../utils/subscription-actions.server"
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { admin, session } = await authenticate.admin(request);
 
-    const response = await admin.graphql(
-        `#graphql
-    query getSubscriptionContracts($first: Int!) {
-      subscriptionContracts(first: $first, reverse: true) {
-        edges {
-          node {
-            id
-            status
-            createdAt
-            nextBillingDate
-            currencyCode
-            customer {
-              firstName
-              lastName
-              email
-            }
-            lines(first: 10) {
-              edges {
-                node {
-                  title
-                  quantity
-                  sellingPlanName
-                  currentPrice {
-                    amount
-                    currencyCode
+    let contracts: any[] = [];
+    let graphqlErrors: string[] = [];
+
+    try {
+        const response = await admin.graphql(
+            `#graphql
+        query getSubscriptionContracts($first: Int!) {
+          subscriptionContracts(first: $first, reverse: true) {
+            edges {
+              node {
+                id
+                status
+                createdAt
+                nextBillingDate
+                currencyCode
+                customer {
+                  firstName
+                  lastName
+                  email
+                }
+                lines(first: 10) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      sellingPlanName
+                      currentPrice {
+                        amount
+                        currencyCode
+                      }
+                    }
                   }
+                }
+                originOrder {
+                  id
+                  name
                 }
               }
             }
-            originOrder {
-              id
-              name
-            }
           }
+        }`,
+            { variables: { first: 50 } }
+        );
+
+        const json = await response.json();
+
+        if (json.errors && json.errors.length > 0) {
+            graphqlErrors = json.errors.map((e: any) => e.message);
+            console.error(`[RecurringSubscriptions] GraphQL errors for ${session.shop}:`, graphqlErrors);
         }
-      }
-    }`,
-        { variables: { first: 50 } }
-    );
 
-    const json = await response.json();
-    const contracts = json.data?.subscriptionContracts?.edges?.map((e: any) => {
-        const node = e.node;
-        const lines = node.lines?.edges?.map((l: any) => l.node) ?? [];
-        const totalAmount = lines.reduce((sum: number, line: any) => {
-            return sum + (parseFloat(line.currentPrice?.amount ?? "0") * (line.quantity ?? 1));
-        }, 0);
+        contracts = json.data?.subscriptionContracts?.edges?.map((e: any) => {
+            const node = e.node;
+            const lines = node.lines?.edges?.map((l: any) => l.node) ?? [];
+            const totalAmount = lines.reduce((sum: number, line: any) => {
+                return sum + (parseFloat(line.currentPrice?.amount ?? "0") * (line.quantity ?? 1));
+            }, 0);
 
-        return {
-            id: node.id,
-            numericId: node.id.split("/").pop(),
-            status: node.status,
-            createdAt: node.createdAt,
-            nextBillingDate: node.nextBillingDate,
-            currency: node.currencyCode || lines[0]?.currentPrice?.currencyCode || "USD",
-            customerName: `${node.customer?.firstName ?? ""} ${node.customer?.lastName ?? ""}`.trim() || "N/A",
-            customerEmail: node.customer?.email ?? "N/A",
-            orderNumber: node.originOrder?.name ?? "N/A",
-            planType: lines[0]?.sellingPlanName ?? "Subscription",
-            totalAmount,
-        };
-    }) ?? [];
+            return {
+                id: node.id,
+                numericId: node.id.split("/").pop(),
+                status: node.status,
+                createdAt: node.createdAt,
+                nextBillingDate: node.nextBillingDate,
+                currency: node.currencyCode || lines[0]?.currentPrice?.currencyCode || "USD",
+                customerName: `${node.customer?.firstName ?? ""} ${node.customer?.lastName ?? ""}`.trim() || "N/A",
+                customerEmail: node.customer?.email ?? "N/A",
+                orderNumber: node.originOrder?.name ?? "N/A",
+                planType: lines[0]?.sellingPlanName ?? "Subscription",
+                totalAmount,
+                source: "shopify" as const,
+            };
+        }) ?? [];
 
-    return { contracts, shop: session.shop };
+        console.log(`[RecurringSubscriptions] Loaded ${contracts.length} native contracts for ${session.shop}`);
+    } catch (err: any) {
+        console.error(`[RecurringSubscriptions] Failed to query Shopify contracts for ${session.shop}:`, err.message || err);
+        graphqlErrors.push(err.message || "Unknown error querying Shopify");
+    }
+
+    let localRecords: any[] = [];
+    if (contracts.length === 0) {
+        try {
+            const { default: db } = await import("../db.server");
+            const dbRecords = await db.recurringDonationLog.findMany({
+                where: { shop: session.shop },
+                orderBy: { createdAt: "desc" },
+                take: 50,
+            });
+            localRecords = dbRecords.map((r: any) => ({
+                id: r.subscriptionContractId || `local-${r.id}`,
+                numericId: r.subscriptionContractId ? r.subscriptionContractId.split("/").pop() : r.id,
+                status: r.subscriptionContractId ? "ACTIVE" : "UNLINKED",
+                createdAt: r.createdAt?.toISOString(),
+                nextBillingDate: null,
+                currency: r.currency || "USD",
+                customerName: r.customerName || "N/A",
+                customerEmail: r.customerEmail || "N/A",
+                orderNumber: r.orderName || "N/A",
+                planType: r.interval || "Subscription",
+                totalAmount: r.amount || 0,
+                source: "database" as const,
+            }));
+            console.log(`[RecurringSubscriptions] Loaded ${localRecords.length} local DB records as fallback`);
+        } catch (dbErr: any) {
+            console.error("[RecurringSubscriptions] DB fallback failed:", dbErr.message);
+        }
+    }
+
+    return {
+        contracts: contracts.length > 0 ? contracts : localRecords,
+        shop: session.shop,
+        graphqlErrors,
+        isLocalFallback: contracts.length === 0 && localRecords.length > 0,
+    };
 };
 
 // ─── Action ─────────────────────────────────────────────────
@@ -115,7 +167,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ──────────────────────────────────────────────
 
 export default function RecurringSubscriptionsPage() {
-    const { contracts } = useLoaderData<typeof loader>();
+    const { contracts, graphqlErrors, isLocalFallback } = useLoaderData<typeof loader>();
     const fetcher = useFetcher<any>();
     const shopify = useAppBridge();
 
@@ -131,9 +183,12 @@ export default function RecurringSubscriptionsPage() {
     };
 
     const { selectedResources, allResourcesSelected, handleSelectionChange } =
-        useIndexResourceState(contracts);
+        useIndexResourceState(contracts as any);
 
-    const getStatusBadge = (status: string) => {
+    const getStatusBadge = (status: string, source: string) => {
+        if (source === "database") {
+            return <Badge tone="info">Tracking Only</Badge>;
+        }
         switch (status.toUpperCase()) {
             case "ACTIVE":
                 return <Badge tone="success">Active</Badge>;
@@ -160,9 +215,9 @@ export default function RecurringSubscriptionsPage() {
         });
     };
 
-    const rowMarkup = contracts.map(
+    const rowMarkup = (contracts || []).map(
         (
-            { id, numericId, customerName, customerEmail, planType, orderNumber, createdAt, nextBillingDate, totalAmount, currency, status }: any,
+            { id, numericId, customerName, customerEmail, planType, orderNumber, createdAt, nextBillingDate, totalAmount, currency, status, source }: any,
             index: number
         ) => (
             <IndexTable.Row
@@ -183,7 +238,6 @@ export default function RecurringSubscriptionsPage() {
                     </div>
                 </IndexTable.Cell>
                 <IndexTable.Cell>
-                    {/* Frequency - we usually derive this from planType or sellingPlanName */}
                     {planType.toLowerCase().includes("month") ? "Monthly" : planType.toLowerCase().includes("week") ? "Weekly" : "Recurring"}
                 </IndexTable.Cell>
                 <IndexTable.Cell>
@@ -194,20 +248,19 @@ export default function RecurringSubscriptionsPage() {
                 <IndexTable.Cell>
                     {new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(totalAmount)}
                 </IndexTable.Cell>
-                <IndexTable.Cell>{getStatusBadge(status)}</IndexTable.Cell>
+                <IndexTable.Cell>{getStatusBadge(status, source)}</IndexTable.Cell>
                 <IndexTable.Cell>
                     <InlineStack gap="200" align="end">
-                        {status === "ACTIVE" && (
+                        {source === "shopify" && status === "ACTIVE" && (
                             <Button
                                 size="slim"
                                 onClick={() => fetcher.submit({ _action: "pause", subscriptionId: id }, { method: "POST" })}
                                 loading={fetcher.state === "submitting" && fetcher.formData?.get("subscriptionId") === id && fetcher.formData?.get("_action") === "pause"}
                             >
                                 Pause
-
                             </Button>
                         )}
-                        {status === "PAUSED" && (
+                        {source === "shopify" && status === "PAUSED" && (
                             <Button
                                 size="slim"
                                 variant="primary"
@@ -215,10 +268,9 @@ export default function RecurringSubscriptionsPage() {
                                 loading={fetcher.state === "submitting" && fetcher.formData?.get("subscriptionId") === id && fetcher.formData?.get("_action") === "activate"}
                             >
                                 Resume
-
                             </Button>
                         )}
-                        {(status === "ACTIVE" || status === "PAUSED") && (
+                        {source === "shopify" && (status === "ACTIVE" || status === "PAUSED") && (
                             <Button
                                 size="slim"
                                 tone="critical"
@@ -230,8 +282,10 @@ export default function RecurringSubscriptionsPage() {
                                 loading={fetcher.state === "submitting" && fetcher.formData?.get("subscriptionId") === id && fetcher.formData?.get("_action") === "cancel"}
                             >
                                 Cancel
-
                             </Button>
+                        )}
+                        {source === "database" && (
+                             <Text variant="bodySm" tone="subdued" as="span">Sync Pending</Text>
                         )}
                     </InlineStack>
                 </IndexTable.Cell>
@@ -242,9 +296,43 @@ export default function RecurringSubscriptionsPage() {
     return (
         <Page fullWidth title="Recurring Donation Management">
             <Layout>
+                {graphqlErrors && graphqlErrors.length > 0 && (
+                    <Layout.Section>
+                        <Banner
+                            title="Subscription Sync Issues Detected"
+                            tone="warning"
+                        >
+                            <p>We encountered some issues while fetching native subscription contracts from Shopify. This might be due to missing permissions or ongoing synchronization.</p>
+                            <Box paddingBlockStart="200">
+                                <List type="bullet">
+                                    {graphqlErrors.map((error: string, idx: number) => (
+                                        <List.Item key={idx}>{error}</List.Item>
+                                    ))}
+                                </List>
+                            </Box>
+                            <Box paddingBlockStart="200">
+                                <Text as="p" variant="bodyMd">
+                                    <strong>Recommendation:</strong> Ensure the app is correctly authorized and that the latest webhooks are registered in your Shopify admin.
+                                </Text>
+                            </Box>
+                        </Banner>
+                    </Layout.Section>
+                )}
+
+                {isLocalFallback && (
+                    <Layout.Section>
+                        <Banner
+                            title="Showing Local Sync Records"
+                            tone="info"
+                        >
+                            <p>No native Shopify Subscription Contracts were found. We are currently showing records tracked directly by the app. Native actions (Pause/Cancel) will be available once the Shopify Contracts are generated.</p>
+                        </Banner>
+                    </Layout.Section>
+                )}
+
                 <Layout.Section>
                     <Card padding="0">
-                        {contracts.length > 0 ? (
+                        {contracts && contracts.length > 0 ? (
                             <IndexTable
                                 resourceName={resourceName}
                                 itemCount={contracts.length}
