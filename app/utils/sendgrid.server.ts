@@ -82,6 +82,9 @@ export async function sendDonationReceipt({
     } else if (type === "reminder") {
       subjectTemplate = settings.reminderSubject || "Upcoming Donation Reminder";
       bodyTemplate = settings.reminderBody;
+    } else if (type === "recovery") {
+      subjectTemplate = settings.recoverySubject || "Action Required: Your donation payment failed";
+      bodyTemplate = settings.recoveryBody || "We were unable to process your recurring donation. We will automatically retry the payment in a few days.";
     } else {
       subjectTemplate = settings.receiptSubject;
       bodyTemplate = settings.receiptBody;
@@ -120,6 +123,7 @@ export async function sendDonationReceipt({
   else if (type === "pause") title = "Subscription Paused";
   else if (type === "resume") title = "Subscription Resumed";
   else if (type === "reminder") title = "Upcoming Donation Reminder";
+  else if (type === "recovery") title = "Payment Failed";
 
   const isRecurring = frequency === "Monthly" || frequency === "Weekly";
 
@@ -138,16 +142,18 @@ export async function sendDonationReceipt({
     return trimmed;
   };
 
-  if (isRecurring && (type === "receipt" || type === "pause" || type === "resume" || type === "cancellation" || type === "reminder")) {
+  if (isRecurring && (type === "receipt" || type === "pause" || type === "resume" || type === "cancellation" || type === "reminder" || type === "recovery")) {
     const statusHeader = type === "pause" ? "Subscription Paused" :
       type === "resume" ? "Subscription Resumed" :
         type === "cancellation" ? "Subscription Cancelled" :
-          type === "reminder" ? "Upcoming Donation Reminder" : "Welcome Aboard";
+          type === "reminder" ? "Upcoming Donation Reminder" :
+            type === "recovery" ? "Payment Failed" : "Welcome Aboard";
     const statusSubtext = type === "pause" ? "Your subscription has been paused. You can resume it at any time from your account." :
       type === "resume" ? "Your subscription has been resumed. Thank you for your continued support!" :
         type === "cancellation" ? "Your subscription has been cancelled. We're sorry to see you go." :
           type === "reminder" ? "This is a friendly reminder of your upcoming donation charge." :
-            "Thank you for your subscription purchase!";
+            type === "recovery" ? "We were unable to process your latest payment. Please update your payment details to avoid interruption." :
+              "Thank you for your subscription purchase!";
 
     htmlContent = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6; background-color: #fff; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
@@ -247,7 +253,7 @@ export async function sendDonationReceipt({
 
     // ── Merchant Notification Copy ──
     // Send a copy to the merchant if enabled, but don't let it crash the main flow
-    if (notifyMerchant && type !== "receipt" && (type === "pause" || type === "resume" || type === "cancellation" || type === "reminder")) {
+    if (notifyMerchant && type !== "receipt" && (type === "pause" || type === "resume" || type === "cancellation" || type === "reminder" || type === "recovery")) {
       try {
         const merchantMsg = {
           ...msg,
