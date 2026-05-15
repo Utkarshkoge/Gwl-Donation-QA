@@ -23,63 +23,67 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         // Try to find the donation log associated with the first order
         // The contract payload includes origin_order info
-        const originOrderId = contract.origin_order?.admin_graphql_api_id
-            || (contract.origin_order_id ? `gid://shopify/Order/${contract.origin_order_id}` : null);
+        const originOrderId = contract.origin_order_id ? `gid://shopify/Order/${contract.origin_order_id}` : null;
+        const originOrderName = contract.origin_order?.name || null;
 
-        console.log(`[SubscriptionContract] Origin order: ${originOrderId || "NONE"}`);
+        console.log(`[SubscriptionContract] Attempting link — GID: ${originOrderId}, Name: ${originOrderName}`);
 
+        let linked = false;
+
+        // 1. Try matching by Global ID
         if (originOrderId) {
             const updateResult = await db.recurringDonationLog.updateMany({
                 where: { shop, orderId: originOrderId },
-                data: {
-                    subscriptionContractId: contractId,
-                },
+                data: { subscriptionContractId: contractId },
             });
-            console.log(`[SubscriptionContract] Linked contract ${contractId} to order ${originOrderId} (${updateResult.count} records updated)`);
+            if (updateResult.count > 0) {
+                console.log(`[SubscriptionContract] ✅ Linked by GID: ${originOrderId}`);
+                linked = true;
+            }
+        }
 
+        // 2. Try matching by Order Number (e.g. #1005) if still not linked
+        if (!linked && originOrderName) {
+            const updateResult = await db.recurringDonationLog.updateMany({
+                where: { shop, orderNumber: originOrderName },
+                data: { subscriptionContractId: contractId },
+            });
+            if (updateResult.count > 0) {
+                console.log(`[SubscriptionContract] ✅ Linked by Name: ${originOrderName}`);
+                linked = true;
+            }
+        }
+
+        if (linked) {
             // Also create/update the subscription record for reminders
             try {
-                const lines = contract.lines?.edges?.map((e: any) => e.node) || [];
-                const totalAmount = lines.reduce((sum: number, line: any) => {
-                    return sum + (parseFloat(line.currentPrice?.amount ?? "0") * (line.quantity ?? 1));
-                }, 0);
-                const currency = contract.currencyCode || lines[0]?.currentPrice?.currencyCode || "USD";
-                const frequency = lines[0]?.sellingPlanName?.toLowerCase().includes("month") ? "monthly" : "weekly";
+                // ... (rest of the logic remains same but improved)
+                const lines = contract.lines || [];
+                const frequency = lines[0]?.selling_plan_name?.toLowerCase().includes("week") ? "weekly" : "monthly";
+                const amount = parseFloat(contract.next_billing_cycle_details?.billing_attempt_expected_amount || "0");
 
                 await db.subscription.upsert({
-                    where: { orderId: contract.origin_order?.name || originOrderId },
+                    where: { orderId: originOrderName || originOrderId || contractId },
                     create: {
                         shop,
-                        customerId: contract.customer?.admin_graphql_api_id || "",
-                        orderId: contract.origin_order?.name || originOrderId,
+                        customerId: contract.customer_id ? `gid://shopify/Customer/${contract.customer_id}` : "",
+                        orderId: originOrderName || originOrderId || contractId,
                         status: "active",
                         frequency: frequency,
-                        amount: totalAmount,
-                        currency: currency,
-                        nextBillingDate: new Date(contract.nextBillingDate),
+                        amount: amount,
+                        currency: contract.currency_code || "USD",
+                        nextBillingDate: new Date(contract.next_billing_date),
                     },
                     update: {
                         status: "active",
-                        nextBillingDate: new Date(contract.nextBillingDate),
+                        nextBillingDate: new Date(contract.next_billing_date),
                     }
                 });
-                console.log(`[SubscriptionContract] ✅ Subscription record upserted for order ${contract.origin_order?.name || originOrderId}`);
             } catch (subErr) {
-                console.error("[SubscriptionContract] Error creating subscription record:", subErr);
-            }
-
-            // Also update CustomerSubscription if it exists
-            try {
-                await db.customerSubscription.updateMany({
-                    where: { shop, orderId: originOrderId },
-                    data: { subscriptionId: contractId, status: "active" },
-                });
-            } catch (csErr) {
-                // Non-fatal: CustomerSubscription may not exist for all orders
-                console.warn("[SubscriptionContract] CustomerSubscription update skipped:", (csErr as any).message);
+                console.error("[SubscriptionContract] Error updating reminders table:", subErr);
             }
         } else {
-            console.log(`[SubscriptionContract] Created contract ${contractId} — no origin order to link`);
+            console.warn(`[SubscriptionContract] ⚠️ Could not link contract ${contractId} to any existing donation log.`);
         }
     } catch (err) {
         console.error("[SubscriptionContract] Create webhook error:", err);
