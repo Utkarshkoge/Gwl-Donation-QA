@@ -196,9 +196,8 @@ export default function DiagnosticsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text variant="headingMd" as="h2">Database Sync Logs</Text>
                 <syncFetcher.Form method="post">
+                  <input type="hidden" name="action" value="sync" />
                   <Button 
-                    name="action" 
-                    value="sync" 
                     variant="primary" 
                     loading={isSyncing}
                     submit
@@ -244,9 +243,8 @@ export default function DiagnosticsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text variant="headingMd" as="h2">Registered Webhooks</Text>
                 <webhookFetcher.Form method="post">
+                  <input type="hidden" name="action" value="register" />
                   <Button 
-                    name="action" 
-                    value="register" 
                     variant="primary" 
                     loading={isRegistering}
                     submit
