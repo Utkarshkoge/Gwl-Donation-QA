@@ -12,10 +12,10 @@ import {
   Box,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
+import db from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
-  const { default: db } = await import("../db.server");
 
   // Check current webhooks via GraphQL
   const response = await admin.graphql(
@@ -59,7 +59,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     orderBy: { createdAt: "desc" },
     take: 10,
     select: {
-      orderName: true,
+      orderNumber: true,
       subscriptionContractId: true,
       createdAt: true,
     }
@@ -143,7 +143,7 @@ export default function DiagnosticsPage() {
                 <List type="bullet">
                   {syncLogs.map((log: any, i: number) => (
                     <List.Item key={i}>
-                      <strong>{log.orderName}:</strong> <br/>
+                      <strong>{log.orderNumber || "N/A"}:</strong> <br/>
                       {log.subscriptionContractId ? (
                         <code>{log.subscriptionContractId}</code>
                       ) : (
