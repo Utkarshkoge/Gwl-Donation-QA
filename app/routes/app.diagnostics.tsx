@@ -59,6 +59,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     orderBy: { createdAt: "desc" },
     take: 10,
     select: {
+      orderId: true,
       orderNumber: true,
       subscriptionContractId: true,
       createdAt: true,
@@ -140,18 +141,21 @@ export default function DiagnosticsPage() {
               <Text variant="headingMd" as="h2">Database Sync Logs</Text>
               <Text as="p" tone="subdued">Latest 10 records in recurringDonationLog</Text>
               {syncLogs.length > 0 ? (
-                <List type="bullet">
-                  {syncLogs.map((log: any, i: number) => (
-                    <List.Item key={i}>
-                      <strong>{log.orderNumber || "N/A"}:</strong> <br/>
-                      {log.subscriptionContractId ? (
-                        <code>{log.subscriptionContractId}</code>
-                      ) : (
-                        <Text as="span" tone="critical">NULL (Sync Pending)</Text>
-                      )}
-                    </List.Item>
-                  ))}
-                </List>
+                <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                  <List type="bullet">
+                    {syncLogs.map((log: any, i: number) => (
+                      <List.Item key={i}>
+                        <strong>Order Name: {log.orderNumber || "N/A"}</strong><br/>
+                        <Text as="span" tone="subdued">DB OrderID: {log.orderId || "MISSING"}</Text><br/>
+                        {log.subscriptionContractId ? (
+                          <Text as="span" tone="success">Synced: <code>{log.subscriptionContractId}</code></Text>
+                        ) : (
+                          <Text as="span" tone="critical">Sync Pending (NULL)</Text>
+                        )}
+                      </List.Item>
+                    ))}
+                  </List>
+                </div>
               ) : (
                 <Text as="p" tone="subdued">No local logs found.</Text>
               )}
