@@ -225,13 +225,17 @@ async function handleRetryFailure(
 
         // Send exhaustion notification
         if (recoverySettings.sendNotifications && recovery.customerEmail) {
+            let emailType = "recovery";
+            if (recovery.fallbackAction === "cancel") emailType = "cancellation";
+            else if (recovery.fallbackAction === "pause") emailType = "pause";
+
             try {
                 await sendDonationReceipt({
                     email: recovery.customerEmail,
                     name: recovery.customerName || "Customer",
                     amount: recovery.amount.toFixed(2),
                     orderNumber: recovery.orderNumber || "N/A",
-                    type: "recovery",
+                    type: emailType as any,
                     shop: recovery.shop,
                     frequency: recovery.frequency?.toLowerCase().includes("month") ? "Monthly" : "Weekly",
                     donationName: recovery.donationName || "Recurring Donation",

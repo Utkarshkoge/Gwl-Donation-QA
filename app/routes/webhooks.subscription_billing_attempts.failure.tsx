@@ -164,13 +164,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         // 5. Send failure notification email
         if (recoverySettings.sendNotifications && customerEmail) {
+            let emailType = "recovery";
+            if (recoveryLog.status === "exhausted") {
+                if (recoverySettings.fallbackAction === "cancel") emailType = "cancellation";
+                else if (recoverySettings.fallbackAction === "pause") emailType = "pause";
+            }
+
             try {
                 const emailResult = await sendDonationReceipt({
                     email: customerEmail,
                     name: customerName,
                     amount: amount.toFixed(2),
                     orderNumber: originOrder?.name || "N/A",
-                    type: "recovery",
+                    type: emailType as any,
                     shop,
                     frequency: frequency.toLowerCase().includes("month") ? "Monthly" : frequency.toLowerCase().includes("week") ? "Weekly" : "Subscription",
                     nextBillingDate: nextRetryDate.toLocaleDateString("en-US", {
