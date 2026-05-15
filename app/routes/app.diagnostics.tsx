@@ -147,9 +147,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function DiagnosticsPage() {
   const { shop, scopes, webhooks, nativeContracts, syncLogs } = useLoaderData<typeof loader>();
-  const fetcher = useFetcher<any>();
+  const syncFetcher = useFetcher<any>();
+  const webhookFetcher = useFetcher<any>();
 
-  const isLoading = fetcher.state !== "idle";
+  const isSyncing = syncFetcher.state !== "idle";
+  const isRegistering = webhookFetcher.state !== "idle";
 
   return (
     <Page title="App Diagnostics">
@@ -193,18 +195,25 @@ export default function DiagnosticsPage() {
             <BlockStack gap="400">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text variant="headingMd" as="h2">Database Sync Logs</Text>
-                <fetcher.Form method="post">
+                <syncFetcher.Form method="post">
                   <Button 
                     name="action" 
                     value="sync" 
                     variant="primary" 
-                    loading={isLoading}
+                    loading={isSyncing}
                     submit
                   >
                     Sync All Missing Contracts
                   </Button>
-                </fetcher.Form>
+                </syncFetcher.Form>
               </div>
+
+              {syncFetcher.data?.message && (
+                <Banner tone={syncFetcher.data.success ? "success" : "critical"}>
+                  <p>{syncFetcher.data.message}</p>
+                </Banner>
+              )}
+
               <Text as="p" tone="subdued">Latest 10 records in recurringDonationLog</Text>
               {syncLogs.length > 0 ? (
                 <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
@@ -234,22 +243,22 @@ export default function DiagnosticsPage() {
             <BlockStack gap="400">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text variant="headingMd" as="h2">Registered Webhooks</Text>
-                <fetcher.Form method="post">
+                <webhookFetcher.Form method="post">
                   <Button 
                     name="action" 
                     value="register" 
                     variant="primary" 
-                    loading={isLoading}
+                    loading={isRegistering}
                     submit
                   >
                     Force Webhook Registration
                   </Button>
-                </fetcher.Form>
+                </webhookFetcher.Form>
               </div>
 
-              {fetcher.data?.message && (
-                <Banner tone={fetcher.data.success ? "success" : "critical"}>
-                  <p>{fetcher.data.message}</p>
+              {webhookFetcher.data?.message && (
+                <Banner tone={webhookFetcher.data.success ? "success" : "critical"}>
+                  <p>{webhookFetcher.data.message}</p>
                 </Banner>
               )}
 
