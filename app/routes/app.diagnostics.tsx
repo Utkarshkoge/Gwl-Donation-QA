@@ -1,6 +1,5 @@
-import { json } from "@remix-run/node";
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useFetcher } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 import {
   Page,
   Layout,
@@ -41,11 +40,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const jsonResponse = await response.json();
   const webhooks = jsonResponse.data?.webhookSubscriptions?.edges?.map((e: any) => e.node) || [];
 
-  return json({
+  return {
     shop: session.shop,
     scopes: session.scope,
     webhooks,
-  });
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -57,13 +56,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try {
       const results = await shopify.registerWebhooks({ session });
       console.log(`[Diagnostics] Manual webhook registration for ${session.shop}:`, results);
-      return json({ success: true, message: "Webhook registration attempt completed. Check server logs for details." });
+      return { success: true, message: "Webhook registration attempt completed. Check server logs for details." };
     } catch (e: any) {
-      return json({ success: false, message: `Registration failed: ${e.message}` });
+      return { success: false, message: `Registration failed: ${e.message}` };
     }
   }
 
-  return json({ success: false, message: "Unknown action" });
+  return { success: false, message: "Unknown action" };
 };
 
 export default function DiagnosticsPage() {
