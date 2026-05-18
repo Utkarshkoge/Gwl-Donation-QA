@@ -268,7 +268,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             };
         }
         if (actionType === "trigger_billing_attempt") {
-            const forceFailure = formData.get("forceFailure") === "true";
             const fullGid = subscriptionId.startsWith("gid://shopify/SubscriptionContract/")
                 ? subscriptionId
                 : `gid://shopify/SubscriptionContract/${subscriptionId}`;
@@ -279,60 +278,48 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             let attempt: any = null;
             let billingAttemptId = "";
 
-            if (forceFailure) {
-                // Mock failure payload instantly for testing
-                attempt = {
-                    id: `gid://shopify/SubscriptionBillingAttempt/MOCK_FAIL_${now.getTime()}`,
-                    completedAt: now.toISOString(),
-                    errorCode: "PAYMENT_METHOD_INCOMPATIBLE_WITH_GATEWAY_CONFIG",
-                    errorMessage: "Mock payment failure for testing recovery flows",
-                    order: null,
-                };
-                billingAttemptId = attempt.id;
-            } else {
-                const response = await admin.graphql(
-                    `#graphql
-                    mutation subscriptionBillingAttemptCreate($subscriptionContractId: ID!, $subscriptionBillingAttemptInput: SubscriptionBillingAttemptInput!) {
-                        subscriptionBillingAttemptCreate(
-                            subscriptionContractId: $subscriptionContractId
-                            subscriptionBillingAttemptInput: $subscriptionBillingAttemptInput
-                        ) {
-                            subscriptionBillingAttempt {
+            const response = await admin.graphql(
+                `#graphql
+                mutation subscriptionBillingAttemptCreate($subscriptionContractId: ID!, $subscriptionBillingAttemptInput: SubscriptionBillingAttemptInput!) {
+                    subscriptionBillingAttemptCreate(
+                        subscriptionContractId: $subscriptionContractId
+                        subscriptionBillingAttemptInput: $subscriptionBillingAttemptInput
+                    ) {
+                        subscriptionBillingAttempt {
+                            id
+                            completedAt
+                            errorCode
+                            errorMessage
+                            order {
                                 id
-                                completedAt
-                                errorCode
-                                errorMessage
-                                order {
-                                    id
-                                    name
-                                }
-                            }
-                            userErrors {
-                                field
-                                message
+                                name
                             }
                         }
-                    }`,
-                    {
-                        variables: {
-                            subscriptionContractId: fullGid,
-                            subscriptionBillingAttemptInput: {
-                                idempotencyKey,
-                                originTime: now.toISOString(),
-                            },
-                        },
+                        userErrors {
+                            field
+                            message
+                        }
                     }
-                );
-
-                const json: any = await response.json();
-                const errors = json?.data?.subscriptionBillingAttemptCreate?.userErrors;
-                if (errors && errors.length > 0) {
-                    throw new Error(errors[0].message);
+                }`,
+                {
+                    variables: {
+                        subscriptionContractId: fullGid,
+                        subscriptionBillingAttemptInput: {
+                            idempotencyKey,
+                            originTime: now.toISOString(),
+                        },
+                    },
                 }
+            );
 
-                attempt = json?.data?.subscriptionBillingAttemptCreate?.subscriptionBillingAttempt;
-                billingAttemptId = attempt?.id || `gid://shopify/SubscriptionBillingAttempt/${now.getTime()}`;
+            const json: any = await response.json();
+            const errors = json?.data?.subscriptionBillingAttemptCreate?.userErrors;
+            if (errors && errors.length > 0) {
+                throw new Error(errors[0].message);
             }
+
+            attempt = json?.data?.subscriptionBillingAttemptCreate?.subscriptionBillingAttempt;
+            billingAttemptId = attempt?.id || `gid://shopify/SubscriptionBillingAttempt/${now.getTime()}`;
 
             // ─── Instant Database Logging for Manual Executions ───
             let contractDetails: any = null;
@@ -625,7 +612,13 @@ export default function SubscriptionDetailPage() {
     const navigate = useNavigate();
 
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
-    const [forceFailure, setForceFailure] = useState(false);
+    const [activeLoader, setActiveLoader] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (fetcher.state === "idle") {
+            setActiveLoader(null);
+        }
+    }, [fetcher.state]);
 
     useEffect(() => {
         if (fetcher.data?.message) {
@@ -648,28 +641,7 @@ export default function SubscriptionDetailPage() {
 
     const isSubmitting = fetcher.state === "submitting";
 
-    const [customDate, setCustomDate] = useState("");
 
-    useEffect(() => {
-        if (contract?.nextBillingDate) {
-            const date = new Date(contract.nextBillingDate);
-            const tzOffset = date.getTimezoneOffset() * 60000;
-            const localISOTime = new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
-            setCustomDate(localISOTime);
-        }
-    }, [contract?.nextBillingDate]);
-
-    const handleSetBillingDate = (dateVal: string) => {
-        if (!dateVal) return;
-        let isoDate = dateVal;
-        if (dateVal.includes("T") && !dateVal.endsWith("Z")) {
-            isoDate = new Date(dateVal).toISOString();
-        }
-        fetcher.submit(
-            { _action: "set_billing_date", subscriptionId: contract.id, date: isoDate },
-            { method: "POST" }
-        );
-    };
 
     // ─── No contract found ────────────────────────────────────
 
@@ -783,6 +755,7 @@ export default function SubscriptionDetailPage() {
     const canCancel = contract.status === "ACTIVE" || contract.status === "PAUSED";
 
     const handleAction = (actionType: string) => {
+        setActiveLoader(actionType);
         fetcher.submit(
             { _action: actionType, subscriptionId: contract.id },
             { method: "POST" }
@@ -971,8 +944,8 @@ export default function SubscriptionDetailPage() {
                                     {canPause && (
                                         <Button
                                             onClick={() => handleAction("pause")}
-                                            loading={isSubmitting && fetcher.formData?.get("_action") === "pause"}
-                                            disabled={isSubmitting}
+                                            loading={activeLoader === "pause"}
+                                            disabled={activeLoader !== null}
                                         >
                                             ⏸️ Pause Subscription
                                         </Button>
@@ -981,8 +954,8 @@ export default function SubscriptionDetailPage() {
                                         <Button
                                             variant="primary"
                                             onClick={() => handleAction("activate")}
-                                            loading={isSubmitting && fetcher.formData?.get("_action") === "activate"}
-                                            disabled={isSubmitting}
+                                            loading={activeLoader === "activate"}
+                                            disabled={activeLoader !== null}
                                         >
                                             ▶️ Resume Subscription
                                         </Button>
@@ -991,7 +964,8 @@ export default function SubscriptionDetailPage() {
                                         <Button
                                             tone="critical"
                                             onClick={() => setCancelModalOpen(true)}
-                                            disabled={isSubmitting}
+                                            loading={activeLoader === "cancel"}
+                                            disabled={activeLoader !== null}
                                         >
                                             🗑️ Cancel Subscription
                                         </Button>
@@ -1002,102 +976,6 @@ export default function SubscriptionDetailPage() {
                     </Layout.Section>
                 )}
 
-                {/* ─── Testing & Verification ────────────────────── */}
-                <Layout.Section>
-                    <Card>
-                        <BlockStack gap="400">
-                            <Text variant="headingMd" as="h2">
-                                ⚡ Testing & Verification
-                            </Text>
-                            <Text as="p" tone="subdued">
-                                Set the Next Billing Date to test Shopify's automatic billing. Set it to "Now" to force an immediate charge, then restore it later to avoid unintended billing.
-                            </Text>
-                            
-                            <InlineStack gap="400" blockAlign="end">
-                                <div style={{ flex: 1, minWidth: "200px" }}>
-                                    <label htmlFor="next-billing-date-input" style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#303030" }}>
-                                        Next Billing Date (Local Time)
-                                    </label>
-                                    <input
-                                        id="next-billing-date-input"
-                                        type="datetime-local"
-                                        style={{
-                                            width: "100%",
-                                            padding: "6px 12px",
-                                            border: "1px solid #ced4da",
-                                            borderRadius: "4px",
-                                            fontSize: "14px",
-                                            height: "36px",
-                                            boxSizing: "border-box"
-                                        }}
-                                        value={customDate}
-                                        onChange={(e) => setCustomDate(e.target.value)}
-                                    />
-                                </div>
-                                <Button
-                                    variant="primary"
-                                    onClick={() => handleSetBillingDate(customDate)}
-                                    loading={isSubmitting && fetcher.formData?.get("_action") === "set_billing_date"}
-                                    disabled={isSubmitting || !customDate}
-                                >
-                                    Update Date
-                                </Button>
-                                <Button
-                                    onClick={() => {
-                                        const now = new Date();
-                                        // Set to 1 minute from now to give Shopify a brief buffer
-                                        now.setMinutes(now.getMinutes() + 1);
-                                        const tzOffset = now.getTimezoneOffset() * 60000;
-                                        const localISOTime = new Date(now.getTime() - tzOffset).toISOString().slice(0, 16);
-                                        setCustomDate(localISOTime);
-                                        handleSetBillingDate(now.toISOString());
-                                    }}
-                                    loading={isSubmitting && fetcher.formData?.get("_action") === "set_billing_date"}
-                                    disabled={isSubmitting}
-                                >
-                                    ⚡ Trigger Billing (1 Min From Now)
-                                </Button>
-                            </InlineStack>
-
-                            <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #e1e3e5" }}>
-                                <BlockStack gap="300">
-                                    <BlockStack gap="200">
-                                        <Text variant="headingSm" as="h3">
-                                            ⚡ Manual Billing Attempt Execution
-                                        </Text>
-                                        <Text as="p" tone="subdued">
-                                            Because Shopify executes background automatic billing in batch jobs periodically, changing the billing date won't trigger billing instantly. Use this button to force Shopify to perform an immediate billing attempt right now!
-                                        </Text>
-                                    </BlockStack>
-                                    <Checkbox
-                                        label="Force Payment Failure (for Testing Recovery & Fallback Flow)"
-                                        checked={forceFailure}
-                                        onChange={(newVal) => setForceFailure(newVal)}
-                                    />
-                                    <InlineStack gap="300">
-                                        <Button
-                                            variant="primary"
-                                            onClick={() => {
-                                                fetcher.submit(
-                                                    { 
-                                                        _action: "trigger_billing_attempt", 
-                                                        subscriptionId: contract.id,
-                                                        forceFailure: String(forceFailure)
-                                                    },
-                                                    { method: "POST" }
-                                                );
-                                            }}
-                                            loading={isSubmitting && fetcher.formData?.get("_action") === "trigger_billing_attempt"}
-                                            disabled={isSubmitting}
-                                        >
-                                            🚀 Execute Billing Attempt Now
-                                        </Button>
-                                    </InlineStack>
-                                </BlockStack>
-                            </div>
-                        </BlockStack>
-                    </Card>
-                </Layout.Section>
 
                 {/* ─── Billing Attempt History ────────────────────── */}
                 {billingAttempts.length > 0 && (
@@ -1279,7 +1157,7 @@ export default function SubscriptionDetailPage() {
                 primaryAction={{
                     content: "Yes, Cancel Subscription",
                     destructive: true,
-                    loading: isSubmitting && fetcher.formData?.get("_action") === "cancel",
+                    loading: activeLoader === "cancel",
                     onAction: () => {
                         handleAction("cancel");
                         setCancelModalOpen(false);
