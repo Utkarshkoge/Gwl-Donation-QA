@@ -450,6 +450,40 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                                 status: existingLogForRetryNum.retryCount + 1 >= existingLogForRetryNum.maxRetries ? "exhausted" : "retrying",
                             },
                         });
+
+                        // Execute native Shopify pause/cancel action if exhausted
+                        if (recoveryLog.status === "exhausted") {
+                            const fallbackAction = recoverySettings.fallbackAction;
+                            let mutation = "";
+                            let mutationName = "";
+
+                            if (fallbackAction === "pause") {
+                                mutation = `mutation { subscriptionContractPause(subscriptionContractId: "${fullGid}") { contract { id status } userErrors { field message } } }`;
+                                mutationName = "subscriptionContractPause";
+                            } else if (fallbackAction === "cancel") {
+                                mutation = `mutation { subscriptionContractCancel(subscriptionContractId: "${fullGid}") { contract { id status } userErrors { field message } } }`;
+                                mutationName = "subscriptionContractCancel";
+                            }
+
+                            if (mutation) {
+                                try {
+                                    const fallbackResponse = await admin.graphql(mutation);
+                                    const fallbackJson: any = await fallbackResponse.json();
+                                    const fallbackResult = fallbackJson.data?.[mutationName];
+                                    if (fallbackResult?.userErrors?.length > 0) {
+                                        console.error(`[SubscriptionDetail] Manual Fallback ${fallbackAction} userErrors:`, fallbackResult.userErrors[0].message);
+                                    } else {
+                                        console.log(`[SubscriptionDetail] Manual Fallback ${fallbackAction} executed successfully on Shopify.`);
+                                        recoveryLog = await db.paymentRecoveryLog.update({
+                                            where: { id: recoveryLog.id },
+                                            data: { status: "fallback_executed" },
+                                        });
+                                    }
+                                } catch (gqlErr) {
+                                    console.error(`[SubscriptionDetail] Manual Fallback mutation execution failed:`, gqlErr);
+                                }
+                            }
+                        }
                     } else {
                         recoveryLog = await db.paymentRecoveryLog.upsert({
                             where: {
