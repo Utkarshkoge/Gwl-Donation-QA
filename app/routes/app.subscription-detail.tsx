@@ -18,6 +18,7 @@ import {
     Spinner,
     EmptyState,
     Icon,
+    Checkbox,
 } from "@shopify/polaris";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -267,6 +268,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             };
         }
         if (actionType === "trigger_billing_attempt") {
+            const forceFailure = formData.get("forceFailure") === "true";
             const fullGid = subscriptionId.startsWith("gid://shopify/SubscriptionContract/")
                 ? subscriptionId
                 : `gid://shopify/SubscriptionContract/${subscriptionId}`;
@@ -274,48 +276,63 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             const now = new Date();
             const idempotencyKey = `billing-attempt-${fullGid.split("/").pop()}-${now.getTime()}`;
 
-            const response = await admin.graphql(
-                `#graphql
-                mutation subscriptionBillingAttemptCreate($subscriptionContractId: ID!, $subscriptionBillingAttemptInput: SubscriptionBillingAttemptInput!) {
-                    subscriptionBillingAttemptCreate(
-                        subscriptionContractId: $subscriptionContractId
-                        subscriptionBillingAttemptInput: $subscriptionBillingAttemptInput
-                    ) {
-                        subscriptionBillingAttempt {
-                            id
-                            completedAt
-                            errorCode
-                            errorMessage
-                            order {
+            let attempt: any = null;
+            let billingAttemptId = "";
+
+            if (forceFailure) {
+                // Mock failure payload instantly for testing
+                attempt = {
+                    id: `gid://shopify/SubscriptionBillingAttempt/MOCK_FAIL_${now.getTime()}`,
+                    completedAt: now.toISOString(),
+                    errorCode: "PAYMENT_METHOD_INCOMPATIBLE_WITH_GATEWAY_CONFIG",
+                    errorMessage: "Mock payment failure for testing recovery flows",
+                    order: null,
+                };
+                billingAttemptId = attempt.id;
+            } else {
+                const response = await admin.graphql(
+                    `#graphql
+                    mutation subscriptionBillingAttemptCreate($subscriptionContractId: ID!, $subscriptionBillingAttemptInput: SubscriptionBillingAttemptInput!) {
+                        subscriptionBillingAttemptCreate(
+                            subscriptionContractId: $subscriptionContractId
+                            subscriptionBillingAttemptInput: $subscriptionBillingAttemptInput
+                        ) {
+                            subscriptionBillingAttempt {
                                 id
-                                name
+                                completedAt
+                                errorCode
+                                errorMessage
+                                order {
+                                    id
+                                    name
+                                }
+                            }
+                            userErrors {
+                                field
+                                message
                             }
                         }
-                        userErrors {
-                            field
-                            message
-                        }
-                    }
-                }`,
-                {
-                    variables: {
-                        subscriptionContractId: fullGid,
-                        subscriptionBillingAttemptInput: {
-                            idempotencyKey,
-                            originTime: now.toISOString(),
+                    }`,
+                    {
+                        variables: {
+                            subscriptionContractId: fullGid,
+                            subscriptionBillingAttemptInput: {
+                                idempotencyKey,
+                                originTime: now.toISOString(),
+                            },
                         },
-                    },
+                    }
+                );
+
+                const json: any = await response.json();
+                const errors = json?.data?.subscriptionBillingAttemptCreate?.userErrors;
+                if (errors && errors.length > 0) {
+                    throw new Error(errors[0].message);
                 }
-            );
 
-            const json: any = await response.json();
-            const errors = json?.data?.subscriptionBillingAttemptCreate?.userErrors;
-            if (errors && errors.length > 0) {
-                throw new Error(errors[0].message);
+                attempt = json?.data?.subscriptionBillingAttemptCreate?.subscriptionBillingAttempt;
+                billingAttemptId = attempt?.id || `gid://shopify/SubscriptionBillingAttempt/${now.getTime()}`;
             }
-
-            const attempt = json?.data?.subscriptionBillingAttemptCreate?.subscriptionBillingAttempt;
-            const billingAttemptId = attempt?.id || `gid://shopify/SubscriptionBillingAttempt/${now.getTime()}`;
 
             // ─── Instant Database Logging for Manual Executions ───
             let contractDetails: any = null;
@@ -574,6 +591,7 @@ export default function SubscriptionDetailPage() {
     const navigate = useNavigate();
 
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
+    const [forceFailure, setForceFailure] = useState(false);
 
     useEffect(() => {
         if (fetcher.data?.message) {
@@ -1008,19 +1026,30 @@ export default function SubscriptionDetailPage() {
                             </InlineStack>
 
                             <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #e1e3e5" }}>
-                                <BlockStack gap="200">
-                                    <Text variant="headingSm" as="h3">
-                                        ⚡ Manual Billing Attempt Execution
-                                    </Text>
-                                    <Text as="p" tone="subdued">
-                                        Because Shopify executes background automatic billing in batch jobs periodically, changing the billing date won't trigger billing instantly. Use this button to force Shopify to perform an immediate billing attempt right now!
-                                    </Text>
+                                <BlockStack gap="300">
+                                    <BlockStack gap="200">
+                                        <Text variant="headingSm" as="h3">
+                                            ⚡ Manual Billing Attempt Execution
+                                        </Text>
+                                        <Text as="p" tone="subdued">
+                                            Because Shopify executes background automatic billing in batch jobs periodically, changing the billing date won't trigger billing instantly. Use this button to force Shopify to perform an immediate billing attempt right now!
+                                        </Text>
+                                    </BlockStack>
+                                    <Checkbox
+                                        label="Force Payment Failure (for Testing Recovery & Fallback Flow)"
+                                        checked={forceFailure}
+                                        onChange={(newVal) => setForceFailure(newVal)}
+                                    />
                                     <InlineStack gap="300">
                                         <Button
                                             variant="primary"
                                             onClick={() => {
                                                 fetcher.submit(
-                                                    { _action: "trigger_billing_attempt", subscriptionId: contract.id },
+                                                    { 
+                                                        _action: "trigger_billing_attempt", 
+                                                        subscriptionId: contract.id,
+                                                        forceFailure: String(forceFailure)
+                                                    },
                                                     { method: "POST" }
                                                 );
                                             }}
