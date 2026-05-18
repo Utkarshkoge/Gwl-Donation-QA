@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { useLoaderData, Link } from "react-router";
+import { useState, useCallback, useEffect } from "react";
+import { useLoaderData, Link, useNavigate } from "react-router";
 import type { LoaderFunctionArgs, HeadersFunction } from "react-router";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -65,6 +65,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function BillingAttemptsPage() {
     const { attempts, recoveryLogs, summary, filters } = useLoaderData<typeof loader>();
+    const navigate = useNavigate();
+
     const [statusFilter, setStatusFilter] = useState(filters.status);
     const [searchQuery, setSearchQuery] = useState(filters.search);
     const [expandedContract, setExpandedContract] = useState<string | null>(filters.contract || null);
@@ -72,22 +74,28 @@ export default function BillingAttemptsPage() {
 
     const THEME = "#51395c";
 
+    useEffect(() => {
+        setStatusFilter(filters.status);
+        setSearchQuery(filters.search);
+        setExpandedContract(filters.contract || null);
+    }, [filters.status, filters.search, filters.contract]);
+
     const applyFilters = useCallback(() => {
         const params = new URLSearchParams();
         if (statusFilter !== "all") params.set("status", statusFilter);
         if (searchQuery) params.set("search", searchQuery);
         if (expandedContract) params.set("contract", expandedContract);
-        window.location.href = `/app/billing-attempts?${params.toString()}`;
-    }, [statusFilter, searchQuery, expandedContract]);
+        navigate(`/app/billing-attempts?${params.toString()}`);
+    }, [statusFilter, searchQuery, expandedContract, navigate]);
 
     const viewTimeline = (contractId: string) => {
         const params = new URLSearchParams();
         params.set("contract", contractId);
-        window.location.href = `/app/billing-attempts?${params.toString()}`;
+        navigate(`/app/billing-attempts?${params.toString()}`);
     };
 
     const clearTimeline = () => {
-        window.location.href = "/app/billing-attempts";
+        navigate("/app/billing-attempts");
     };
 
     const fmtDate = (d: string) => new Date(d).toLocaleString("en-US", {
