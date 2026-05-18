@@ -9,14 +9,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // If missing, this request came from the Shopify Admin embedded iframe.
   const isProxyRequest = url.searchParams.has("signature");
   if (!isProxyRequest) {
+    // Authenticate first so the session is established BEFORE redirecting.
+    // Without this, the redirect strips auth params and causes a re-auth loop
+    // that lands on the dashboard instead of the subscription detail page.
+    await authenticate.admin(request);
+
     const id = url.searchParams.get("id");
     const customerId = url.searchParams.get("customer_id");
     if (id) {
-      // Redirect to the admin subscription detail page
-      return redirect(`/app/subscription-detail?id=${id}&customer_id=${customerId || ""}`);
+      // Redirect to the admin subscription detail page, keeping ALL original search params
+      const redirectUrl = new URL(`/app/subscription-detail`, url.origin);
+      url.searchParams.forEach((value, key) => {
+        redirectUrl.searchParams.set(key, value);
+      });
+      redirectUrl.searchParams.set("id", id);
+      if (customerId) {
+        redirectUrl.searchParams.set("customer_id", customerId);
+      }
+      return redirect(redirectUrl.pathname + redirectUrl.search);
     }
-    // No ID provided — redirect to admin subscriptions list
-    return redirect("/app/recurring-subscriptions");
+    // No ID provided — redirect to admin subscriptions list, keeping ALL original search params
+    const redirectUrl = new URL(`/app/recurring-subscriptions`, url.origin);
+    url.searchParams.forEach((value, key) => {
+      redirectUrl.searchParams.set(key, value);
+    });
+    return redirect(redirectUrl.pathname + redirectUrl.search);
   }
 
   const { liquid, admin } = await authenticate.public.appProxy(request);

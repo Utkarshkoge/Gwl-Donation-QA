@@ -11,7 +11,7 @@ import {
   List,
   Box,
 } from "@shopify/polaris";
-import { authenticate } from "../shopify.server";
+import shopify, { authenticate } from "../shopify.server";
 import db from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -76,7 +76,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin, session, shopify } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const action = formData.get("action");
 
