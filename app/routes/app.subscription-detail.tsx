@@ -239,8 +239,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
             const response = await admin.graphql(
                 `#graphql
-                mutation subscriptionContractSetNextBillingDate($date: DateTime!, $subscriptionContractId: ID!) {
-                    subscriptionContractSetNextBillingDate(date: $date, subscriptionContractId: $subscriptionContractId) {
+                mutation subscriptionContractSetNextBillingDate($date: DateTime!, $contractId: ID!) {
+                    subscriptionContractSetNextBillingDate(date: $date, contractId: $contractId) {
                         contract {
                             id
                             nextBillingDate
@@ -251,7 +251,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         }
                     }
                 }`,
-                { variables: { date, subscriptionContractId: fullGid } }
+                { variables: { date, contractId: fullGid } }
             );
 
             const json: any = await response.json();
