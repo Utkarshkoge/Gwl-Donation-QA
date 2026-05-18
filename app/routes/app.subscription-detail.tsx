@@ -262,13 +262,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
             return {
                 success: true,
-                message: `Successfully updated Next Billing Date to ${new Date(date).toLocaleString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                })}`,
+                message: "Successfully updated Next Billing Date",
+                date: date,
             };
         }
         if (actionType === "trigger_billing_attempt") {
@@ -359,7 +354,18 @@ export default function SubscriptionDetailPage() {
 
     useEffect(() => {
         if (fetcher.data?.message) {
-            shopify.toast.show(fetcher.data.message, {
+            let toastMessage = fetcher.data.message;
+            if (fetcher.data.success && fetcher.data.date) {
+                const formatted = new Date(fetcher.data.date).toLocaleString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                });
+                toastMessage = `${fetcher.data.message} to ${formatted}`;
+            }
+            shopify.toast.show(toastMessage, {
                 isError: !fetcher.data.success,
             });
         }
