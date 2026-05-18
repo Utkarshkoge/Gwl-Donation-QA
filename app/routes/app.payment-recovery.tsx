@@ -34,13 +34,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             where: { shop },
         });
 
+        const subscription = await prisma.planSubscription.findUnique({
+            where: { shop },
+        });
+        const plan = subscription?.plan ?? "basic";
+
         return {
             settings: settings ?? { ...DEFAULT_SETTINGS },
+            plan,
         };
     } catch (error) {
         console.error("[PaymentRecovery] Loader error:", error);
         return {
             settings: { ...DEFAULT_SETTINGS },
+            plan: "basic",
         };
     }
 };
@@ -50,6 +57,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const { session } = await authenticate.admin(request);
     const shop = session.shop;
     const formData = await request.formData();
+
+    // Server-side Plan Gatekeeping
+    const subscription = await prisma.planSubscription.findUnique({
+        where: { shop },
+    });
+    const plan = subscription?.plan ?? "basic";
+    if (plan !== "pro") {
+        return { status: "error", message: "Failed Payment Recovery is only available on the Pro Plan." };
+    }
 
     // Parse and validate
     const retryAttempts = parseInt(formData.get("retryAttempts") as string);
@@ -91,7 +107,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 // ─── Component ──────────────────────────────────────────────
 export default function PaymentRecoveryPage() {
-    const { settings: savedSettings } = useLoaderData<typeof loader>();
+    const { settings: savedSettings, plan } = useLoaderData<typeof loader>();
+    const isProPlan = plan === "pro";
     const fetcher = useFetcher<typeof action>();
     const shopify = useAppBridge();
 
@@ -157,15 +174,26 @@ export default function PaymentRecoveryPage() {
             <s-button
                 slot="primary-action"
                 variant="primary"
-                onClick={handleSave}
+                onClick={isProPlan ? handleSave : () => window.location.href = "/app/pricing"}
                 className="main-save-btn"
                 {...(isSaving ? { loading: true } : {})}
                 disabled={isSaving}
             >
-                {isSaving ? "Saving..." : "Save Settings"}
+                {isProPlan ? (isSaving ? "Saving..." : "Save Settings") : "Upgrade to Unlock ↗"}
             </s-button>
 
             <div className="recovery-settings-layout">
+                {!isProPlan && (
+                    <div className="plan-gate-banner">
+                        <div className="plan-gate-icon">🔒</div>
+                        <div className="plan-gate-body">
+                            <h3>Pro Plan Feature</h3>
+                            <p>Failed Payment Recovery and Smart Retry Automation are available exclusively on the <strong>Pro Plan</strong>.</p>
+                            <Link to="/app/pricing" className="upgrade-link-btn">Upgrade Plan to Unlock ↗</Link>
+                        </div>
+                    </div>
+                )}
+
                 {/* Section 1: Activation */}
                 <div className="settings-row">
                     <div className="settings-info">
@@ -174,8 +202,8 @@ export default function PaymentRecoveryPage() {
                             When enabled, our intelligent system will monitor and automatically retry failed recurring transactions to maximize your revenue.
                         </p>
                         <div style={{ marginTop: '12px' }}>
-                            <s-badge tone={enabled ? "success" : "caution"}>
-                                {enabled ? "Currently Active" : "Currently Disabled"}
+                            <s-badge tone={enabled && isProPlan ? "success" : "caution"}>
+                                {enabled && isProPlan ? "Currently Active" : "Currently Disabled"}
                             </s-badge>
                         </div>
                     </div>
@@ -189,8 +217,9 @@ export default function PaymentRecoveryPage() {
                                 <label className="custom-switch">
                                     <input 
                                         type="checkbox" 
-                                        checked={enabled} 
+                                        checked={enabled && isProPlan} 
                                         onChange={(e) => setEnabled(e.target.checked)} 
+                                        disabled={!isProPlan}
                                     />
                                     <span className="custom-slider"></span>
                                 </label>
@@ -199,7 +228,7 @@ export default function PaymentRecoveryPage() {
                     </div>
                 </div>
 
-                <div className={`recovery-logic-container ${enabled ? 'active' : 'disabled'}`}>
+                <div className={`recovery-logic-container ${enabled && isProPlan ? 'active' : 'disabled'}`}>
                     {/* Section 2: Strategy */}
                     <div className="settings-row">
                         <div className="settings-info">
@@ -301,6 +330,45 @@ export default function PaymentRecoveryPage() {
             </div>
 
             <style>{`
+                .plan-gate-banner {
+                    display: flex;
+                    gap: 16px;
+                    background: #fdf3f2;
+                    border: 1px solid #f8b4b0;
+                    border-radius: 12px;
+                    padding: 16px 20px;
+                    margin-bottom: 28px;
+                    align-items: center;
+                }
+                .plan-gate-icon {
+                    font-size: 28px;
+                }
+                .plan-gate-body h3 {
+                    margin: 0 0 4px 0;
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: #c53030;
+                }
+                .plan-gate-body p {
+                    margin: 0 0 8px 0;
+                    font-size: 14px;
+                    color: #6d7175;
+                }
+                .upgrade-link-btn {
+                    display: inline-block;
+                    background: #c53030;
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    text-decoration: none;
+                    font-size: 13px;
+                    font-weight: 600;
+                    transition: opacity 0.2s;
+                }
+                .upgrade-link-btn:hover {
+                    opacity: 0.9;
+                }
+
                 .recovery-settings-layout {
                     max-width: 1000px;
                     margin: 32px auto 60px;

@@ -1,4 +1,4 @@
-import{w as T,u as R,d as A,r as c,e as O}from"./chunk-UVKPFVEO-A-eF8wi6.js";import{j as e}from"./jsx-runtime-vZpP4iHm.js";import{c as p}from"./features-BmBjzq3F.js";import{R as P}from"./RichTextEditor-Tp13pjAm.js";import{u as D}from"./useAppBridge-Bj34gXAL.js";const l={pauseSubject:"Subscription Paused",pauseBody:`<h2 style="color:#92400e;">Subscription Paused</h2>
+import{w as T,u as R,d as A,r as c,e as O}from"./chunk-UVKPFVEO-A-eF8wi6.js";import{j as e}from"./jsx-runtime-vZpP4iHm.js";import{c as p}from"./features-CUSwT18e.js";import{R as P}from"./RichTextEditor-Tp13pjAm.js";import{u as D}from"./useAppBridge-Bj34gXAL.js";const l={pauseSubject:"Subscription Paused",pauseBody:`<h2 style="color:#92400e;">Subscription Paused</h2>
 
 <p>Hello <strong>{{first_name}}</strong>,</p>
 

@@ -383,7 +383,7 @@ export default function BillingAttemptsPage() {
 
                 .ba-source { font-size: 12px; white-space: nowrap; }
                 .ba-error-code { display: inline-block; background: #fde8e8; color: #c53030; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-family: monospace; margin-right: 4px; }
-                .ba-error-msg { font-size: 12px; color: #6d7175; display: block; margin-top: 2px; max-width: 200px; }
+                .ba-error-msg { font-size: 12px; color: #6d7175; display: block; margin-top: 2px; }
 
                 .ba-retry-badge { background: #f0e6f6; color: ${THEME}; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
                 .ba-fallback { font-size: 12px; text-transform: capitalize; color: #6d7175; font-weight: 600; }

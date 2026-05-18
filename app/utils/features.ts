@@ -10,6 +10,7 @@ export interface PlanFeatures {
     canUseFilters: boolean;
     canUseCustomBranding: boolean;
     canSendReminders: boolean;
+    canUsePaymentRecovery: boolean;
 }
 
 export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
@@ -22,6 +23,7 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
         canUseFilters: false,
         canUseCustomBranding: false,
         canSendReminders: false,
+        canUsePaymentRecovery: false,
     },
     advanced: {
         canUsePercentageDonation: true,
@@ -32,6 +34,7 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
         canUseFilters: true,
         canUseCustomBranding: false,
         canSendReminders: true,
+        canUsePaymentRecovery: false,
     },
     pro: {
         canUsePercentageDonation: true,
@@ -42,6 +45,7 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
         canUseFilters: true,
         canUseCustomBranding: true,
         canSendReminders: true,
+        canUsePaymentRecovery: true,
     },
 };
 
