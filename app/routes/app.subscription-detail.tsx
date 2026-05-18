@@ -230,6 +230,48 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const subscriptionId = formData.get("subscriptionId") as string;
 
     try {
+        if (actionType === "set_billing_date") {
+            const date = formData.get("date") as string;
+            if (!date) throw new Error("No date provided");
+            const fullGid = subscriptionId.startsWith("gid://shopify/SubscriptionContract/")
+                ? subscriptionId
+                : `gid://shopify/SubscriptionContract/${subscriptionId}`;
+
+            const response = await admin.graphql(
+                `#graphql
+                mutation subscriptionContractSetNextBillingDate($date: DateTime!, $subscriptionContractId: ID!) {
+                    subscriptionContractSetNextBillingDate(date: $date, subscriptionContractId: $subscriptionContractId) {
+                        contract {
+                            id
+                            nextBillingDate
+                        }
+                        userErrors {
+                            field
+                            message
+                        }
+                    }
+                }`,
+                { variables: { date, subscriptionContractId: fullGid } }
+            );
+
+            const json: any = await response.json();
+            const errors = json?.data?.subscriptionContractSetNextBillingDate?.userErrors;
+            if (errors && errors.length > 0) {
+                throw new Error(errors[0].message);
+            }
+
+            return {
+                success: true,
+                message: `Successfully updated Next Billing Date to ${new Date(date).toLocaleString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                })}`,
+            };
+        }
+
         const result = await performSubscriptionAction({
             admin,
             shop: session.shop,
@@ -265,6 +307,29 @@ export default function SubscriptionDetailPage() {
     }, [fetcher.data, shopify]);
 
     const isSubmitting = fetcher.state === "submitting";
+
+    const [customDate, setCustomDate] = useState("");
+
+    useEffect(() => {
+        if (contract?.nextBillingDate) {
+            const date = new Date(contract.nextBillingDate);
+            const tzOffset = date.getTimezoneOffset() * 60000;
+            const localISOTime = new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+            setCustomDate(localISOTime);
+        }
+    }, [contract?.nextBillingDate]);
+
+    const handleSetBillingDate = (dateVal: string) => {
+        if (!dateVal) return;
+        let isoDate = dateVal;
+        if (dateVal.includes("T") && !dateVal.endsWith("Z")) {
+            isoDate = new Date(dateVal).toISOString();
+        }
+        fetcher.submit(
+            { _action: "set_billing_date", subscriptionId: contract.id, date: isoDate },
+            { method: "POST" }
+        );
+    };
 
     // ─── No contract found ────────────────────────────────────
 
@@ -596,6 +661,66 @@ export default function SubscriptionDetailPage() {
                         </Card>
                     </Layout.Section>
                 )}
+
+                {/* ─── Testing & Verification ────────────────────── */}
+                <Layout.Section>
+                    <Card>
+                        <BlockStack gap="400">
+                            <Text variant="headingMd" as="h2">
+                                ⚡ Testing & Verification
+                            </Text>
+                            <Text as="p" tone="subdued">
+                                Set the Next Billing Date to test Shopify's automatic billing. Set it to "Now" to force an immediate charge, then restore it later to avoid unintended billing.
+                            </Text>
+                            
+                            <InlineStack gap="400" blockAlign="end">
+                                <div style={{ flex: 1, minWidth: "200px" }}>
+                                    <label htmlFor="next-billing-date-input" style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#303030" }}>
+                                        Next Billing Date (Local Time)
+                                    </label>
+                                    <input
+                                        id="next-billing-date-input"
+                                        type="datetime-local"
+                                        style={{
+                                            width: "100%",
+                                            padding: "6px 12px",
+                                            border: "1px solid #ced4da",
+                                            borderRadius: "4px",
+                                            fontSize: "14px",
+                                            height: "36px",
+                                            boxSizing: "border-box"
+                                        }}
+                                        value={customDate}
+                                        onChange={(e) => setCustomDate(e.target.value)}
+                                    />
+                                </div>
+                                <Button
+                                    variant="primary"
+                                    onClick={() => handleSetBillingDate(customDate)}
+                                    loading={isSubmitting && fetcher.formData?.get("_action") === "set_billing_date"}
+                                    disabled={isSubmitting || !customDate}
+                                >
+                                    Update Date
+                                </Button>
+                                <Button
+                                    onClick={() => {
+                                        const now = new Date();
+                                        // Set to 1 minute from now to give Shopify a brief buffer
+                                        now.setMinutes(now.getMinutes() + 1);
+                                        const tzOffset = now.getTimezoneOffset() * 60000;
+                                        const localISOTime = new Date(now.getTime() - tzOffset).toISOString().slice(0, 16);
+                                        setCustomDate(localISOTime);
+                                        handleSetBillingDate(now.toISOString());
+                                    }}
+                                    loading={isSubmitting && fetcher.formData?.get("_action") === "set_billing_date"}
+                                    disabled={isSubmitting}
+                                >
+                                    ⚡ Trigger Billing (1 Min From Now)
+                                </Button>
+                            </InlineStack>
+                        </BlockStack>
+                    </Card>
+                </Layout.Section>
 
                 {/* ─── Billing Attempt History ────────────────────── */}
                 {billingAttempts.length > 0 && (
