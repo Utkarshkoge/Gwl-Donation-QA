@@ -1,7 +1,24 @@
 import type { LoaderFunctionArgs } from "react-router";
+import { redirect } from "react-router";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+
+  // Detect admin context: app proxy requests always have a 'signature' param.
+  // If missing, this request came from the Shopify Admin embedded iframe.
+  const isProxyRequest = url.searchParams.has("signature");
+  if (!isProxyRequest) {
+    const id = url.searchParams.get("id");
+    const customerId = url.searchParams.get("customer_id");
+    if (id) {
+      // Redirect to the admin subscription detail page
+      return redirect(`/app/subscription-detail?id=${id}&customer_id=${customerId || ""}`);
+    }
+    // No ID provided — redirect to admin subscriptions list
+    return redirect("/app/recurring-subscriptions");
+  }
+
   const { liquid, admin } = await authenticate.public.appProxy(request);
 
   if (!admin) {
@@ -12,7 +29,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     `);
   }
 
-  const url = new URL(request.url);
+
   const customerId = url.searchParams.get("logged_in_customer_id");
 
   if (!customerId) {

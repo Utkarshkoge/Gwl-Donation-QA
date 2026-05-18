@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { useFetcher, useLoaderData, Link } from "react-router";
+import { useFetcher, useLoaderData, Link, useNavigate } from "react-router";
 import {
     Page,
     Layout,
@@ -170,6 +170,7 @@ export default function RecurringSubscriptionsPage() {
     const { contracts, graphqlErrors, isLocalFallback } = useLoaderData<typeof loader>();
     const fetcher = useFetcher<any>();
     const shopify = useAppBridge();
+    const navigate = useNavigate();
 
     useEffect(() => {
         if (fetcher.data?.message) {
@@ -227,9 +228,11 @@ export default function RecurringSubscriptionsPage() {
                 position={index}
             >
                 <IndexTable.Cell>
-                    <Text variant="bodyMd" fontWeight="bold" as="span">
-                        #{numericId}
-                    </Text>
+                    <Link to={`/app/subscription-detail?id=${numericId}`} style={{ textDecoration: "none" }}>
+                        <Text variant="bodyMd" fontWeight="bold" as="span">
+                            #{numericId}
+                        </Text>
+                    </Link>
                 </IndexTable.Cell>
                 <IndexTable.Cell>
                     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -251,6 +254,13 @@ export default function RecurringSubscriptionsPage() {
                 <IndexTable.Cell>{getStatusBadge(status, source)}</IndexTable.Cell>
                 <IndexTable.Cell>
                     <InlineStack gap="200" align="end">
+                        <Button
+                            size="slim"
+                            variant="plain"
+                            onClick={() => navigate(`/app/subscription-detail?id=${numericId}`)}
+                        >
+                            View
+                        </Button>
                         {source === "shopify" && status === "ACTIVE" && (
                             <Button
                                 size="slim"

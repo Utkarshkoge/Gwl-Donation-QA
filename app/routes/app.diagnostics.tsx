@@ -169,6 +169,17 @@ export default function DiagnosticsPage() {
           </Card>
         </Layout.Section>
 
+        <Layout.Section>
+          <Banner tone="info" title="About Subscription Scopes">
+            <p>
+              This app uses <code>write_own_subscription_contracts</code> scope, which means <strong>only this app</strong> can
+              query and manage subscription contracts it created. If you test queries in Shopify's GraphiQL app or another tool,
+              contracts will appear empty or return "invalid" — this is expected behavior, not a bug.
+              The contracts shown below are fetched by this app's own authenticated API and confirm everything is working correctly.
+            </p>
+          </Banner>
+        </Layout.Section>
+
         <Layout.Section variant="oneHalf">
           <Card title="Raw Shopify Contracts">
              <BlockStack gap="400">
