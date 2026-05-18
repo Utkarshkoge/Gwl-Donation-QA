@@ -271,6 +271,65 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 })}`,
             };
         }
+        if (actionType === "trigger_billing_attempt") {
+            const fullGid = subscriptionId.startsWith("gid://shopify/SubscriptionContract/")
+                ? subscriptionId
+                : `gid://shopify/SubscriptionContract/${subscriptionId}`;
+
+            const now = new Date();
+            const idempotencyKey = `billing-attempt-${fullGid.split("/").pop()}-${now.getTime()}`;
+
+            const response = await admin.graphql(
+                `#graphql
+                mutation subscriptionBillingAttemptCreate($subscriptionContractId: ID!, $subscriptionBillingAttemptInput: SubscriptionBillingAttemptInput!) {
+                    subscriptionBillingAttemptCreate(
+                        subscriptionContractId: $subscriptionContractId
+                        subscriptionBillingAttemptInput: $subscriptionBillingAttemptInput
+                    ) {
+                        billingAttempt {
+                            id
+                            completedAt
+                            errorCode
+                            errorMessage
+                            order {
+                                id
+                                name
+                            }
+                        }
+                        userErrors {
+                            field
+                            message
+                        }
+                    }
+                }`,
+                {
+                    variables: {
+                        subscriptionContractId: fullGid,
+                        subscriptionBillingAttemptInput: {
+                            idempotencyKey,
+                            originTime: now.toISOString(),
+                        },
+                    },
+                }
+            );
+
+            const json: any = await response.json();
+            const errors = json?.data?.subscriptionBillingAttemptCreate?.userErrors;
+            if (errors && errors.length > 0) {
+                throw new Error(errors[0].message);
+            }
+
+            const attempt = json?.data?.subscriptionBillingAttemptCreate?.billingAttempt;
+            if (attempt?.errorCode) {
+                throw new Error(`Billing attempt failed: ${attempt.errorMessage || attempt.errorCode}`);
+            }
+
+            const orderName = attempt?.order?.name || "";
+            return {
+                success: true,
+                message: `Billing attempt completed successfully! ${orderName ? `Created Order ${orderName}.` : "Webhook will sync details shortly."}`,
+            };
+        }
 
         const result = await performSubscriptionAction({
             admin,
@@ -718,6 +777,32 @@ export default function SubscriptionDetailPage() {
                                     ⚡ Trigger Billing (1 Min From Now)
                                 </Button>
                             </InlineStack>
+
+                            <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #e1e3e5" }}>
+                                <BlockStack gap="200">
+                                    <Text variant="headingSm" as="h3">
+                                        ⚡ Manual Billing Attempt Execution
+                                    </Text>
+                                    <Text as="p" tone="subdued">
+                                        Because Shopify executes background automatic billing in batch jobs periodically, changing the billing date won't trigger billing instantly. Use this button to force Shopify to perform an immediate billing attempt right now!
+                                    </Text>
+                                    <InlineStack gap="300">
+                                        <Button
+                                            variant="primary"
+                                            onClick={() => {
+                                                fetcher.submit(
+                                                    { _action: "trigger_billing_attempt", subscriptionId: contract.id },
+                                                    { method: "POST" }
+                                                );
+                                            }}
+                                            loading={isSubmitting && fetcher.formData?.get("_action") === "trigger_billing_attempt"}
+                                            disabled={isSubmitting}
+                                        >
+                                            🚀 Execute Billing Attempt Now
+                                        </Button>
+                                    </InlineStack>
+                                </BlockStack>
+                            </div>
                         </BlockStack>
                     </Card>
                 </Layout.Section>
