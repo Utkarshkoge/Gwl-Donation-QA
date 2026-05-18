@@ -286,7 +286,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         subscriptionContractId: $subscriptionContractId
                         subscriptionBillingAttemptInput: $subscriptionBillingAttemptInput
                     ) {
-                        billingAttempt {
+                        subscriptionBillingAttempt {
                             id
                             completedAt
                             errorCode
@@ -319,7 +319,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 throw new Error(errors[0].message);
             }
 
-            const attempt = json?.data?.subscriptionBillingAttemptCreate?.billingAttempt;
+            const attempt = json?.data?.subscriptionBillingAttemptCreate?.subscriptionBillingAttempt;
             if (attempt?.errorCode) {
                 throw new Error(`Billing attempt failed: ${attempt.errorMessage || attempt.errorCode}`);
             }

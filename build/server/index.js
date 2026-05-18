@@ -7817,7 +7817,7 @@ const action$8 = async ({
                         subscriptionContractId: $subscriptionContractId
                         subscriptionBillingAttemptInput: $subscriptionBillingAttemptInput
                     ) {
-                        billingAttempt {
+                        subscriptionBillingAttempt {
                             id
                             completedAt
                             errorCode
@@ -7846,7 +7846,7 @@ const action$8 = async ({
       if (errors && errors.length > 0) {
         throw new Error(errors[0].message);
       }
-      const attempt = (_f = (_e = json == null ? void 0 : json.data) == null ? void 0 : _e.subscriptionBillingAttemptCreate) == null ? void 0 : _f.billingAttempt;
+      const attempt = (_f = (_e = json == null ? void 0 : json.data) == null ? void 0 : _e.subscriptionBillingAttemptCreate) == null ? void 0 : _f.subscriptionBillingAttempt;
       if (attempt == null ? void 0 : attempt.errorCode) {
         throw new Error(`Billing attempt failed: ${attempt.errorMessage || attempt.errorCode}`);
       }
