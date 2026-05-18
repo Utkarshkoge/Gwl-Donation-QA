@@ -2,7 +2,36 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { liquid, admin } = await authenticate.public.appProxy(request);
+  let liquid: any;
+  let admin: any;
+
+  try {
+    const authResult = await authenticate.public.appProxy(request);
+    liquid = authResult.liquid;
+    admin = authResult.admin;
+  } catch (authErr) {
+    console.error("[SubscriptionDetailAppProxy] Auth Error:", authErr);
+    let errorMessage = authErr instanceof Error ? authErr.message : String(authErr);
+    if (authErr instanceof Response) {
+      errorMessage = `Shopify AppProxy authentication threw a Response with Status ${authErr.status}. This usually means proxy verification failed due to signature mismatch, incorrect app client secret in env variables, or missing offline session.`;
+    }
+    return new Response(
+      `
+      <div style="max-width:700px;margin:60px auto;font-family:sans-serif;padding:0 24px;text-align:center;">
+        <h2 style="color:#dc2626;font-size:24px;margin-bottom:8px;">App Proxy Authentication Failed</h2>
+        <p style="color:#555;margin:0 0 24px;font-size:15px;">Your store could not authenticate the app proxy request.</p>
+        <div style="background:#fee2e2;border:1px solid #fecaca;color:#991b1b;padding:20px;border-radius:8px;text-align:left;font-family:monospace;margin-top:16px;">
+          <strong style="display:block;margin-bottom:8px;font-size:14px;">Error Details:</strong>
+          <pre style="margin:0;white-space:pre-wrap;font-size:13px;line-height:1.5;">${errorMessage}</pre>
+        </div>
+      </div>
+      `,
+      {
+        status: 200,
+        headers: { "Content-Type": "text/html" }
+      }
+    );
+  }
   const url = new URL(request.url);
   const customerId = url.searchParams.get("logged_in_customer_id");
   const subscriptionId = params.id;
