@@ -44,11 +44,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             where: { shop },
         });
 
-        if (!recoverySettings?.enabled) {
-            console.log(`[PaymentRecovery] Recovery disabled for shop ${shop}, skipping.`);
-            return new Response("OK - Recovery disabled", { status: 200 });
-        }
-
         // 2. Fetch subscription contract details from Shopify for customer info
         let contractDetails: any = null;
         try {
@@ -104,15 +99,61 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const customerEmail = customer?.email || "";
         const customerName = `${customer?.firstName || ""} ${customer?.lastName || ""}`.trim() || "Customer";
 
+        const normalizedContractId = contractId.startsWith("gid://")
+            ? contractId
+            : `gid://shopify/SubscriptionContract/${contractId}`;
+
+        // Get retry number for billing attempt log
+        const existingLogForRetryNum = await db.paymentRecoveryLog.findUnique({
+            where: {
+                shop_subscriptionContractId: {
+                    shop,
+                    subscriptionContractId: normalizedContractId,
+                },
+            },
+        });
+        const currentRetryCount = existingLogForRetryNum && (existingLogForRetryNum.status === "pending" || existingLogForRetryNum.status === "retrying")
+            ? existingLogForRetryNum.retryCount + 1
+            : 0;
+
+        // ── Log to BillingAttemptLog for granular attempt-level tracking (ALWAYS) ──
+        try {
+            await db.billingAttemptLog.create({
+                data: {
+                    shop,
+                    subscriptionContractId: normalizedContractId,
+                    billingAttemptId,
+                    source: "webhook",
+                    status: "failed",
+                    errorCode,
+                    errorMessage,
+                    orderId: originOrder?.id || null,
+                    orderNumber: originOrder?.name || null,
+                    customerEmail,
+                    customerName,
+                    amount,
+                    currency,
+                    donationName,
+                    frequency,
+                    retryNumber: currentRetryCount,
+                    rawPayload: JSON.stringify(payload).substring(0, 4000), // Store raw payload for failures only
+                },
+            });
+            console.log(`[PaymentRecovery] BillingAttemptLog entry created (Always) for ${normalizedContractId}`);
+        } catch (logErr) {
+            console.error(`[PaymentRecovery] Failed to create BillingAttemptLog:`, logErr);
+        }
+
+        if (!recoverySettings?.enabled) {
+            console.log(`[PaymentRecovery] Recovery disabled for shop ${shop}, skipping recovery logic.`);
+            return new Response("OK - Recovery disabled but logged failure", { status: 200 });
+        }
+
         // 3. Calculate next retry date
         const nextRetryDate = new Date();
         nextRetryDate.setDate(nextRetryDate.getDate() + recoverySettings.retryInterval);
 
         // 4. Create or update recovery log
-        const normalizedContractId = contractId.startsWith("gid://")
-            ? contractId
-            : `gid://shopify/SubscriptionContract/${contractId}`;
-
         const existingLog = await db.paymentRecoveryLog.findUnique({
             where: {
                 shop_subscriptionContractId: {
@@ -178,34 +219,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
 
         console.log(`[PaymentRecovery] Recovery log ${recoveryLog.id} — retry ${recoveryLog.retryCount}/${recoveryLog.maxRetries}, next retry: ${nextRetryDate.toISOString()}`);
-
-        // ── Log to BillingAttemptLog for granular attempt-level tracking ──
-        try {
-            await db.billingAttemptLog.create({
-                data: {
-                    shop,
-                    subscriptionContractId: normalizedContractId,
-                    billingAttemptId,
-                    source: "webhook",
-                    status: "failed",
-                    errorCode,
-                    errorMessage,
-                    orderId: originOrder?.id || null,
-                    orderNumber: originOrder?.name || null,
-                    customerEmail,
-                    customerName,
-                    amount,
-                    currency,
-                    donationName,
-                    frequency,
-                    retryNumber: recoveryLog.retryCount,
-                    rawPayload: JSON.stringify(payload).substring(0, 4000), // Store raw payload for failures only
-                },
-            });
-            console.log(`[PaymentRecovery] BillingAttemptLog entry created for ${normalizedContractId}`);
-        } catch (logErr) {
-            console.error(`[PaymentRecovery] Failed to create BillingAttemptLog:`, logErr);
-        }
 
         // 5. Send failure notification email
         if (recoverySettings.sendNotifications && customerEmail) {

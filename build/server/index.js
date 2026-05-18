@@ -557,12 +557,6 @@ const action$s = async ({
         shop
       }
     });
-    if (!(recoverySettings == null ? void 0 : recoverySettings.enabled)) {
-      console.log(`[PaymentRecovery] Recovery disabled for shop ${shop}, skipping.`);
-      return new Response("OK - Recovery disabled", {
-        status: 200
-      });
-    }
     let contractDetails = null;
     try {
       const {
@@ -614,9 +608,51 @@ const action$s = async ({
     const frequency = (line == null ? void 0 : line.sellingPlanName) || "Subscription";
     const customerEmail = (customer == null ? void 0 : customer.email) || "";
     const customerName = `${(customer == null ? void 0 : customer.firstName) || ""} ${(customer == null ? void 0 : customer.lastName) || ""}`.trim() || "Customer";
+    const normalizedContractId = contractId.startsWith("gid://") ? contractId : `gid://shopify/SubscriptionContract/${contractId}`;
+    const existingLogForRetryNum = await prisma.paymentRecoveryLog.findUnique({
+      where: {
+        shop_subscriptionContractId: {
+          shop,
+          subscriptionContractId: normalizedContractId
+        }
+      }
+    });
+    const currentRetryCount = existingLogForRetryNum && (existingLogForRetryNum.status === "pending" || existingLogForRetryNum.status === "retrying") ? existingLogForRetryNum.retryCount + 1 : 0;
+    try {
+      await prisma.billingAttemptLog.create({
+        data: {
+          shop,
+          subscriptionContractId: normalizedContractId,
+          billingAttemptId,
+          source: "webhook",
+          status: "failed",
+          errorCode,
+          errorMessage,
+          orderId: (originOrder == null ? void 0 : originOrder.id) || null,
+          orderNumber: (originOrder == null ? void 0 : originOrder.name) || null,
+          customerEmail,
+          customerName,
+          amount,
+          currency,
+          donationName,
+          frequency,
+          retryNumber: currentRetryCount,
+          rawPayload: JSON.stringify(payload).substring(0, 4e3)
+          // Store raw payload for failures only
+        }
+      });
+      console.log(`[PaymentRecovery] BillingAttemptLog entry created (Always) for ${normalizedContractId}`);
+    } catch (logErr) {
+      console.error(`[PaymentRecovery] Failed to create BillingAttemptLog:`, logErr);
+    }
+    if (!(recoverySettings == null ? void 0 : recoverySettings.enabled)) {
+      console.log(`[PaymentRecovery] Recovery disabled for shop ${shop}, skipping recovery logic.`);
+      return new Response("OK - Recovery disabled but logged failure", {
+        status: 200
+      });
+    }
     const nextRetryDate = /* @__PURE__ */ new Date();
     nextRetryDate.setDate(nextRetryDate.getDate() + recoverySettings.retryInterval);
-    const normalizedContractId = contractId.startsWith("gid://") ? contractId : `gid://shopify/SubscriptionContract/${contractId}`;
     const existingLog = await prisma.paymentRecoveryLog.findUnique({
       where: {
         shop_subscriptionContractId: {
@@ -680,33 +716,6 @@ const action$s = async ({
       });
     }
     console.log(`[PaymentRecovery] Recovery log ${recoveryLog.id} — retry ${recoveryLog.retryCount}/${recoveryLog.maxRetries}, next retry: ${nextRetryDate.toISOString()}`);
-    try {
-      await prisma.billingAttemptLog.create({
-        data: {
-          shop,
-          subscriptionContractId: normalizedContractId,
-          billingAttemptId,
-          source: "webhook",
-          status: "failed",
-          errorCode,
-          errorMessage,
-          orderId: (originOrder == null ? void 0 : originOrder.id) || null,
-          orderNumber: (originOrder == null ? void 0 : originOrder.name) || null,
-          customerEmail,
-          customerName,
-          amount,
-          currency,
-          donationName,
-          frequency,
-          retryNumber: recoveryLog.retryCount,
-          rawPayload: JSON.stringify(payload).substring(0, 4e3)
-          // Store raw payload for failures only
-        }
-      });
-      console.log(`[PaymentRecovery] BillingAttemptLog entry created for ${normalizedContractId}`);
-    } catch (logErr) {
-      console.error(`[PaymentRecovery] Failed to create BillingAttemptLog:`, logErr);
-    }
     if (recoverySettings.sendNotifications && customerEmail) {
       let emailType = "recovery";
       if (recoveryLog.status === "exhausted") {
