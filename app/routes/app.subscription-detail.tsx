@@ -315,14 +315,237 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
 
             const attempt = json?.data?.subscriptionBillingAttemptCreate?.subscriptionBillingAttempt;
-            if (attempt?.errorCode) {
-                throw new Error(`Billing attempt failed: ${attempt.errorMessage || attempt.errorCode}`);
+            const billingAttemptId = attempt?.id || `gid://shopify/SubscriptionBillingAttempt/${now.getTime()}`;
+
+            // ─── Instant Database Logging for Manual Executions ───
+            let contractDetails: any = null;
+            try {
+                const contractResponse = await admin.graphql(
+                    `#graphql
+                    query getContractForManualLog($id: ID!) {
+                        subscriptionContract(id: $id) {
+                            id
+                            status
+                            nextBillingDate
+                            currencyCode
+                            customer {
+                                email
+                                firstName
+                                lastName
+                            }
+                            lines(first: 1) {
+                                edges {
+                                    node {
+                                        title
+                                        sellingPlanName
+                                        currentPrice { amount }
+                                    }
+                                }
+                            }
+                            originOrder {
+                                id
+                                name
+                            }
+                        }
+                    }`,
+                    { variables: { id: fullGid } }
+                );
+
+                const contractJson = await contractResponse.json();
+                contractDetails = contractJson.data?.subscriptionContract;
+            } catch (gqlErr) {
+                console.error(`[SubscriptionDetail] Failed to fetch contract details for manual log:`, gqlErr);
             }
 
+            const db = (await import("../db.server")).default;
+            const customer = contractDetails?.customer;
+            const line = contractDetails?.lines?.edges?.[0]?.node;
+            const originOrder = contractDetails?.originOrder;
+            const amount = parseFloat(line?.currentPrice?.amount || "0");
+            const currency = contractDetails?.currencyCode || "USD";
+            const donationName = line?.title || "Recurring Donation";
+            const frequency = line?.sellingPlanName || "Subscription";
+            const customerEmail = customer?.email || "";
+            const customerName = `${customer?.firstName || ""} ${customer?.lastName || ""}`.trim() || "Customer";
+
+            if (attempt?.errorCode) {
+                const errorCode = attempt.errorCode;
+                const errorMessage = attempt.errorMessage || "Payment failed";
+
+                // Get retry count for database tracking
+                const existingLogForRetryNum = await db.paymentRecoveryLog.findUnique({
+                    where: {
+                        shop_subscriptionContractId: {
+                            shop: session.shop,
+                            subscriptionContractId: fullGid,
+                        },
+                    },
+                });
+                const currentRetryCount = existingLogForRetryNum && (existingLogForRetryNum.status === "pending" || existingLogForRetryNum.status === "retrying")
+                    ? existingLogForRetryNum.retryCount + 1
+                    : 0;
+
+                try {
+                    await db.billingAttemptLog.create({
+                        data: {
+                            shop: session.shop,
+                            subscriptionContractId: fullGid,
+                            billingAttemptId,
+                            source: "manual",
+                            status: "failed",
+                            errorCode,
+                            errorMessage,
+                            orderId: originOrder?.id || null,
+                            orderNumber: originOrder?.name || null,
+                            customerEmail,
+                            customerName,
+                            amount,
+                            currency,
+                            donationName,
+                            frequency,
+                            retryNumber: currentRetryCount,
+                            rawPayload: JSON.stringify(attempt),
+                        },
+                    });
+                    console.log(`[SubscriptionDetail] Instant database log for manual billing failure created successfully.`);
+                } catch (dbErr) {
+                    console.error(`[SubscriptionDetail] Failed to create instant database log:`, dbErr);
+                }
+
+                // If Smart Recovery is enabled, upsert recovery settings and queue retries
+                const recoverySettings = await db.paymentRecoverySettings.findUnique({
+                    where: { shop: session.shop },
+                });
+
+                if (recoverySettings?.enabled) {
+                    const nextRetryDate = new Date();
+                    nextRetryDate.setDate(nextRetryDate.getDate() + recoverySettings.retryInterval);
+
+                    let recoveryLog;
+                    if (existingLogForRetryNum && (existingLogForRetryNum.status === "pending" || existingLogForRetryNum.status === "retrying")) {
+                        recoveryLog = await db.paymentRecoveryLog.update({
+                            where: { id: existingLogForRetryNum.id },
+                            data: {
+                                retryCount: existingLogForRetryNum.retryCount + 1,
+                                errorCode,
+                                errorMessage,
+                                nextRetryDate,
+                                status: existingLogForRetryNum.retryCount + 1 >= existingLogForRetryNum.maxRetries ? "exhausted" : "retrying",
+                            },
+                        });
+                    } else {
+                        recoveryLog = await db.paymentRecoveryLog.upsert({
+                            where: {
+                                shop_subscriptionContractId: {
+                                    shop: session.shop,
+                                    subscriptionContractId: fullGid,
+                                },
+                            },
+                            create: {
+                                shop: session.shop,
+                                subscriptionContractId: fullGid,
+                                orderId: originOrder?.id || null,
+                                orderNumber: originOrder?.name || null,
+                                customerEmail,
+                                customerName,
+                                amount,
+                                currency,
+                                errorCode,
+                                errorMessage,
+                                retryCount: 0,
+                                maxRetries: recoverySettings.retryAttempts,
+                                retryInterval: recoverySettings.retryInterval,
+                                nextRetryDate,
+                                fallbackAction: recoverySettings.fallbackAction,
+                                status: "pending",
+                                donationName,
+                                frequency,
+                            },
+                            update: {
+                                retryCount: 0,
+                                errorCode,
+                                errorMessage,
+                                nextRetryDate,
+                                maxRetries: recoverySettings.retryAttempts,
+                                retryInterval: recoverySettings.retryInterval,
+                                fallbackAction: recoverySettings.fallbackAction,
+                                status: "pending",
+                            },
+                        });
+                    }
+
+                    if (recoverySettings.sendNotifications && customerEmail) {
+                        try {
+                            const { sendDonationReceipt } = await import("../utils/sendgrid.server");
+                            await sendDonationReceipt({
+                                email: customerEmail,
+                                name: customerName,
+                                amount: amount.toFixed(2),
+                                orderNumber: originOrder?.name || "N/A",
+                                type: (recoveryLog.status === "exhausted" ? (recoverySettings.fallbackAction === "cancel" ? "cancellation" : "pause") : "recovery") as any,
+                                shop: session.shop,
+                                frequency: frequency.toLowerCase().includes("month") ? "Monthly" : frequency.toLowerCase().includes("week") ? "Weekly" : "Subscription",
+                                nextBillingDate: nextRetryDate.toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                }),
+                                donationName,
+                                manageUrl: `https://${session.shop}/account/subscriptions`,
+                            });
+                        } catch (emailErr) {
+                            console.error(`[SubscriptionDetail] Failed to send instant recovery notification:`, emailErr);
+                        }
+                    }
+                }
+
+                throw new Error(`Billing attempt failed: ${errorMessage}`);
+            }
+
+            // Success manual execution logging
+            const orderId = attempt?.order?.id || null;
             const orderName = attempt?.order?.name || "";
+
+            try {
+                await db.billingAttemptLog.create({
+                    data: {
+                        shop: session.shop,
+                        subscriptionContractId: fullGid,
+                        billingAttemptId,
+                        source: "manual",
+                        status: "success",
+                        orderId,
+                        orderNumber: orderName || null,
+                        customerEmail,
+                        customerName,
+                        amount,
+                        currency,
+                        donationName,
+                        frequency,
+                    },
+                });
+
+                const recoveryLog = await db.paymentRecoveryLog.findUnique({
+                    where: {
+                        shop_subscriptionContractId: {
+                            shop: session.shop,
+                            subscriptionContractId: fullGid,
+                        },
+                    },
+                });
+                if (recoveryLog && (recoveryLog.status === "pending" || recoveryLog.status === "retrying")) {
+                    await db.paymentRecoveryLog.update({
+                        where: { id: recoveryLog.id },
+                        data: { status: "recovered", orderId },
+                    });
+                }
+            } catch (dbErr) {
+                console.error(`[SubscriptionDetail] Failed to log successful attempt:`, dbErr);
+            }
+
             return {
                 success: true,
-                message: `Billing attempt completed successfully! ${orderName ? `Created Order ${orderName}.` : "Webhook will sync details shortly."}`,
+                message: `Billing attempt completed successfully! ${orderName ? `Created Order ${orderName}.` : "Successful attempt logged."}`,
             };
         }
 
