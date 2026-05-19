@@ -668,6 +668,7 @@ export default function EditCampaignPage() {
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const isSubmitting = fetcher.state === "submitting";
 
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data) {

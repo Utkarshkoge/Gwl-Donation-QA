@@ -45,6 +45,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const createdAt = payload.created_at ? new Date(payload.created_at) : new Date();
 
         let hasCampaignDonation = false;
+        let hasCampaignRecurring = false;  // campaign product ordered WITH a selling plan
+        let campaignRecurringName = "";    // carry campaign name from HEAD LOGIC to STAGING
         let donationAmtCents = 0;
 
         // -------------------------
@@ -106,7 +108,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             (p: any) => ["selling_plan", "_selling_plan_id"].includes(p.name)
                         );
                         if (hasSellingPlan || hasSellingPlanProp) {
-                            console.log(`[Webhook] Skipping Donation table for recurring item (variant ${variantIdStr}) — will be handled by STAGING LOGIC.`);
+                            // Campaign product with a selling plan → accumulate amount and flag so
+                            // STAGING LOGIC can write to RecurringDonationLog with the correct data.
+                            const basePrice = parseFloat(item.price || "0") * (item.quantity || 1);
+                            const lineDiscount = parseFloat(item.total_discount || "0");
+                            const recurringAmt = Math.max(0, basePrice - lineDiscount);
+                            donationAmtCents += Math.round(recurringAmt * 100);
+                            hasCampaignDonation = true;
+                            hasCampaignRecurring = true;
+                            campaignRecurringName = matchingCampaign.name || "Campaign Donation";
+                            console.log(`[Webhook] Campaign recurring item detected (variant ${variantIdStr}), amount ${recurringAmt} accumulated. Will write to RecurringDonationLog in STAGING.`);
                             continue;
                         }
 
@@ -441,7 +452,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     amount: donationAmtFormatted,
                     orderNumber: order.name,
                     shop,
-                    donationName: directDonationName,
+                    donationName: campaignRecurringName || directDonationName,
                     frequency: freqLabel,
                     shippingAddress: shippingAddr,
                     billingAddress: billingAddr,
@@ -561,10 +572,39 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             type: "roundup",
                         },
                     });
+                } else if (hasCampaignRecurring && frequency !== "one_time") {
+                    // Campaign product ordered with a selling plan → write to RecurringDonationLog
+                    await db.recurringDonationLog.upsert({
+                        where: { orderId: orderIdStr },
+                        update: { subscriptionContractId, type: "recurring" },
+                        create: {
+                            shop,
+                            orderId: orderIdStr,
+                            orderNumber: order.name,
+                            donationAmount: parseFloat(donationAmtFormatted),
+                            orderTotal: parseFloat(order.total_price || 0),
+                            currency: order.currency || "USD",
+                            receiptStatus: emailStatus,
+                            receiptSentAt: sentDate,
+                            sellingPlanId: recurringSellingPlanId,
+                            frequency,
+                            subscriptionContractId,
+                            type: "recurring",
+                        },
+                    });
+                    console.log(`[Webhook] Wrote campaign recurring donation to RecurringDonationLog for Order ${order.name}.`);
                 } else if (hasCampaignDonation) {
-                    // Campaign donations are logged in the 'Donation' table. 
-                    // Skip PosDonationLog to avoid duplicates for preset donations.
-                    console.log(`[Webhook] Order ${order.name} is a Preset Donation. Skipping POS log.`);
+                    // One-time campaign (preset) donations are already in the Donation table.
+                    // Update their receiptStatus now that we know if the email was sent.
+                    try {
+                        await db.donation.updateMany({
+                            where: { orderId: orderId, receiptStatus: { not: "sent" } },
+                            data: { receiptStatus: emailStatus, receiptSentAt: sentDate } as any,
+                        });
+                        console.log(`[Webhook] Updated Donation table receiptStatus to "${emailStatus}" for Order ${order.name}.`);
+                    } catch (updateErr) {
+                        console.warn("[Webhook] Could not update donation receipt status (non-fatal):", updateErr);
+                    }
                 } else {
                     // POS donations only
                     await db.posDonationLog.upsert({
@@ -595,8 +635,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 try {
                     const existingTags = order.tags ? order.tags.split(',').map((t: any) => t.trim()) : [];
 
-                    if (hasDirectDonationProduct) {
-                        // For global widget items
+                    if (hasDirectDonationProduct || hasCampaignRecurring) {
+                        // For global widget items AND campaign products ordered with a selling plan
                         const isSub = frequency !== "one_time";
                         const orderTag = isSub ? (frequency === "monthly" ? "recurring_donation_monthly" : "recurring_donation_weekly") : "preset_donation";
                         const customerTag = isSub ? (frequency === "monthly" ? "recurring_donor_monthly" : "recurring_donor_weekly") : "preset_donor";
@@ -642,7 +682,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     let donationTypeLabel = "Donation Type";
                     let typeValue = "POS";
 
-                    if (hasCampaignDonation || (hasDirectDonationProduct && frequency === "one_time")) {
+                    if (hasCampaignRecurring && frequency !== "one_time") {
+                        // Campaign product with selling plan
+                        typeValue = frequency === "monthly" ? "Monthly" : "Weekly";
+                    } else if (hasCampaignDonation || (hasDirectDonationProduct && frequency === "one_time")) {
                         typeValue = "Preset";
                     } else if (hasDirectDonationProduct) {
                         typeValue = frequency === "monthly" ? "Monthly" : "Weekly";

@@ -205,8 +205,12 @@
     append("id", numericVariantId);
     append("quantity", String(quantity));
     if (sellingPlanId) {
-      // Pass the native selling_plan so Shopify creates a SubscriptionContract
-      append("selling_plan", sellingPlanId);
+      // Shopify /cart/add requires selling_plan as a plain integer, not a GID string.
+      // e.g. "gid://shopify/SellingPlan/703440650524" → "703440650524"
+      const numericSellingPlanId = String(sellingPlanId).includes("/")
+        ? String(sellingPlanId).split("/").pop()
+        : String(sellingPlanId);
+      append("selling_plan", numericSellingPlanId);
     }
     if (properties) {
       for (const [k, v] of Object.entries(properties)) {
