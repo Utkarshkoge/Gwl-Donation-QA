@@ -599,7 +599,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     try {
                         await db.donation.updateMany({
                             where: { orderId: orderId, receiptStatus: { not: "sent" } },
-                            data: { receiptStatus: emailStatus, receiptSentAt: sentDate } as any,
+                            data: { receiptStatus: emailStatus } as any,
                         });
                         console.log(`[Webhook] Updated Donation table receiptStatus to "${emailStatus}" for Order ${order.name}.`);
                     } catch (updateErr) {
