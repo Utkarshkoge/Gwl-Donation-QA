@@ -46,8 +46,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         let hasCampaignDonation = false;
         let hasCampaignRecurring = false;  // campaign product ordered WITH a selling plan
-        let campaignRecurringName = "";    // carry campaign name from HEAD LOGIC to STAGING
+        let campaignRecurringNames: string[] = [];    // carry campaign names from HEAD LOGIC to STAGING (supports multi-product)
         let donationAmtCents = 0;
+
+        // ── Moved here from STAGING LOGIC to prevent TDZ (Temporal Dead Zone) errors ──
+        // These are referenced in HEAD LOGIC but were previously declared after it.
+        let hasDirectDonationProduct = false;
+        let directDonationName = "Charity Donation";
+        let directDonationAmountCents = 0;
+        let hasRoundUpDonation = false;
+        let roundUpAmountCents = 0;
+
+        // Collect all donation line items for multi-product email support
+        let donationLineItems: Array<{ title: string; amount: string; image?: string; sellingPlan?: string }> = [];
 
         // -------------------------
         // HEAD LOGIC: Campaign Donations 
@@ -116,7 +127,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             donationAmtCents += Math.round(recurringAmt * 100);
                             hasCampaignDonation = true;
                             hasCampaignRecurring = true;
-                            campaignRecurringName = matchingCampaign.name || "Campaign Donation";
+                            campaignRecurringNames.push(matchingCampaign.name || "Campaign Donation");
+                            // Collect for multi-product email
+                            donationLineItems.push({
+                                title: item.title || matchingCampaign.name || "Campaign Donation",
+                                amount: recurringAmt.toFixed(2),
+                                sellingPlan: "Recurring Donation",
+                            });
                             console.log(`[Webhook] Campaign recurring item detected (variant ${variantIdStr}), amount ${recurringAmt} accumulated. Will write to RecurringDonationLog in STAGING.`);
                             continue;
                         }
@@ -158,6 +175,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             if (!hasDirectDonationProduct && !hasRoundUpDonation) {
                                 directDonationName = matchingCampaign.name || "Preset Donation";
                             }
+                            // Collect for multi-product email
+                            donationLineItems.push({
+                                title: item.title || matchingCampaign.name || "Preset Donation",
+                                amount: donationAmount.toFixed(2),
+                            });
                         } catch (dbError) {
                             console.error("Error inserting donation record:", dbError);
                         }
@@ -201,12 +223,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         let isRecurring = false;
         let recurringSellingPlanId: string | null = null;
         let subscriptionContractId: string | null = null;
-        let directDonationAmountCents = 0;
-        let hasDirectDonationProduct = false;
-        let directDonationName = "Charity Donation";
-
-        let hasRoundUpDonation = false;
-        let roundUpAmountCents = 0;
+        // hasDirectDonationProduct, directDonationName, directDonationAmountCents,
+        // hasRoundUpDonation, roundUpAmountCents are now declared before HEAD LOGIC (line ~52)
 
         // Detection Loop
         for (const lineItem of (order.line_items || [])) {
@@ -215,6 +233,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 hasDirectDonationProduct = true;
                 directDonationName = lineItem.title || "Charity Donation";
                 directDonationAmountCents += (parseFloat(lineItem.price || 0) * 100) * (lineItem.quantity || 1);
+                // Collect for multi-product email
+                const itemAmt = (parseFloat(lineItem.price || 0) * (lineItem.quantity || 1)).toFixed(2);
+                donationLineItems.push({
+                    title: lineItem.title || "Charity Donation",
+                    amount: itemAmt,
+                    sellingPlan: lineItem.selling_plan_allocation ? "Recurring Donation" : undefined,
+                });
             }
 
             // Check for Round-Up properties (Standard 'roundup' or Custom 'extra')
@@ -425,7 +450,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     ? `${order.billing_address.name}\n${order.billing_address.address1}${order.billing_address.address2 ? ` ${order.billing_address.address2}` : ""}\n${order.billing_address.city}, ${order.billing_address.province_code || ""} ${order.billing_address.zip}\n${order.billing_address.country}`
                     : "";
 
-                const donationItem = (order.line_items || []).find((li: any) => String(li.product_id) === String(DONATION_PRODUCT_ID));
+                // Look for the global donation product first, then fall back to any campaign product
+                let donationItem = (order.line_items || []).find((li: any) => String(li.product_id) === String(DONATION_PRODUCT_ID));
+                if (!donationItem && hasCampaignDonation) {
+                    // For campaign products: find the first line item that matched a campaign
+                    donationItem = (order.line_items || []).find((li: any) => {
+                        return li.properties && li.properties.some?.((p: any) => p.name === "Donation Campaign");
+                    }) || (order.line_items || []).find((li: any) => {
+                        // Fallback: check if any line item's product matches a known campaign product
+                        return donationLineItems.some(dl => dl.title === li.title);
+                    });
+                }
 
                 let nextBillingDate = "";
                 const today = new Date();
@@ -445,6 +480,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     paymentMethod = order.payment_gateway_names[0];
                 }
 
+                // Resolve product title: prefer actual line item title, then campaign name
+                const resolvedProductTitle = donationItem?.title || campaignRecurringNames[0] || directDonationName;
+                const resolvedDonationName = campaignRecurringNames.join(", ") || directDonationName;
+
                 console.log(`[Webhook] Calling sendDonationReceipt for ${currentCustomerEmail}...`);
                 const res = await sendDonationReceipt({
                     email: currentCustomerEmail,
@@ -452,15 +491,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     amount: donationAmtFormatted,
                     orderNumber: order.name,
                     shop,
-                    donationName: campaignRecurringName || directDonationName,
+                    donationName: resolvedDonationName,
                     frequency: freqLabel,
                     shippingAddress: shippingAddr,
                     billingAddress: billingAddr,
-                    productTitle: donationItem?.title || directDonationName,
+                    productTitle: resolvedProductTitle,
                     manageUrl: frequency !== "one_time" ? `https://${shop}/apps/pos-donation/subscriptions` : undefined,
                     nextBillingDate: nextBillingDate,
                     paymentMethod: paymentMethod,
-                    productImage: (order as any).donation_product_image
+                    productImage: (order as any).donation_product_image,
+                    // Pass all donation line items for multi-product email
+                    lineItems: donationLineItems.length > 1 ? donationLineItems : undefined,
                 });
                 console.log(`[Webhook] sendDonationReceipt result: ${JSON.stringify(res)}`);
                 if (res.success) {

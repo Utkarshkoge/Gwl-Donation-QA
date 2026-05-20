@@ -17,6 +17,7 @@ interface DonationReceiptArgs {
   productImage?: string;
   productTitle?: string;
   paymentMethod?: string;
+  lineItems?: Array<{ title: string; amount: string; image?: string; sellingPlan?: string }>;
 }
 
 export async function sendDonationReceipt({
@@ -35,6 +36,7 @@ export async function sendDonationReceipt({
   productImage,
   productTitle,
   paymentMethod,
+  lineItems,
 }: DonationReceiptArgs) {
   // Defensive environment variable parsing
   const apiKey = (process.env.SENDGRID_API_KEY || "").trim();
@@ -169,14 +171,31 @@ export async function sendDonationReceipt({
         <p style="font-size: 16px; margin-top: 20px; margin-bottom: 0;">Thanks!<br /><strong>Your Store Team</strong></p>
       </div>
 
-      <div style="background-color: #f9f9f9; border-radius: 12px; padding: 20px; margin-bottom: 32px; display: flex; align-items: center; gap: 16px;">
-        ${productImage ? `<img src="${productImage}" alt="${productTitle || 'Donation'}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #eee;" />` : `<div style="width: 80px; height: 80px; background: #eee; border-radius: 8px;"></div>`}
-        <div style="flex: 1; padding-left: 16px;">
-          <div style="font-weight: 700; font-size: 16px; color: #202223;">${productTitle || donationName || "Charity Donation"}</div>
-          <div style="font-size: 14px; color: #6D7175; margin-top: 4px;">Selling Plan: ${frequency} Donation</div>
-          <div style="font-size: 14px; color: #6D7175;">Quantity: 1</div>
-        </div>
-        <div style="font-weight: 700; font-size: 16px; color: #202223;">${amount}</div>
+      <div style="background-color: #f9f9f9; border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+        ${lineItems && lineItems.length > 1
+          ? lineItems.map((item, idx) => `
+            <div style="display: flex; align-items: center; gap: 16px;${idx > 0 ? ' border-top: 1px solid #eee; margin-top: 12px; padding-top: 12px;' : ''}">
+              ${item.image ? `<img src="${item.image}" alt="${item.title}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #eee;" />` : `<div style="width: 60px; height: 60px; background: #eee; border-radius: 8px;"></div>`}
+              <div style="flex: 1; padding-left: 8px;">
+                <div style="font-weight: 700; font-size: 15px; color: #202223;">${item.title}</div>
+                <div style="font-size: 13px; color: #6D7175; margin-top: 2px;">${item.sellingPlan ? `Selling Plan: ${item.sellingPlan}` : `${frequency || 'One-time'} Donation`}</div>
+                <div style="font-size: 13px; color: #6D7175;">Quantity: 1</div>
+              </div>
+              <div style="font-weight: 700; font-size: 15px; color: #202223;">${item.amount}</div>
+            </div>
+          `).join('')
+          : `
+            <div style="display: flex; align-items: center; gap: 16px;">
+              ${productImage ? `<img src="${productImage}" alt="${productTitle || 'Donation'}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #eee;" />` : `<div style="width: 80px; height: 80px; background: #eee; border-radius: 8px;"></div>`}
+              <div style="flex: 1; padding-left: 16px;">
+                <div style="font-weight: 700; font-size: 16px; color: #202223;">${productTitle || donationName || "Charity Donation"}</div>
+                <div style="font-size: 14px; color: #6D7175; margin-top: 4px;">Selling Plan: ${frequency} Donation</div>
+                <div style="font-size: 14px; color: #6D7175;">Quantity: 1</div>
+              </div>
+              <div style="font-weight: 700; font-size: 16px; color: #202223;">${amount}</div>
+            </div>
+          `
+        }
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; border-top: 1px solid #eee; padding-top: 24px; margin-bottom: 24px;">

@@ -284,11 +284,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 amount: donationAmount,
                 orderNumber: order.name,
                 shop,
+                donationName: presetDonation ? presetDonation.campaign?.name : productTitleForEmail,
                 frequency: freqLabel,
                 shippingAddress: shippingAddr,
                 billingAddress: billingAddr,
                 productTitle: productTitleForEmail,
-                manageUrl: `https://${shop}/account/subscriptions`,
+                manageUrl: freqLabel !== "One-time" ? `https://${shop}/account/subscriptions` : undefined,
                 nextBillingDate: nextBillingDate
             });
 
