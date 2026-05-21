@@ -599,13 +599,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                                     shopifyVariantId: variantIdStr,
                                     createdAt: createdAt,
                                     receiptStatus: emailStatus,
-                                    receiptSentAt: sentDate,
                                 },
                                 update: {
                                     amount: directOneTimeDonationAmtCents / 100,
                                     orderNumber: order.name,
                                     receiptStatus: emailStatus,
-                                    receiptSentAt: sentDate,
                                 },
                             });
                             hasCampaignDonation = true;
@@ -649,7 +647,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     try {
                         await db.donation.updateMany({
                             where: { orderId: orderId, receiptStatus: { not: "sent" } },
-                            data: { receiptStatus: emailStatus, receiptSentAt: sentDate } as any,
+                            data: { receiptStatus: emailStatus },
                         });
                         loggedAny = true;
                         console.log(`[Webhook] Updated Donation table receiptStatus to "${emailStatus}" for Order ${order.name}.`);
