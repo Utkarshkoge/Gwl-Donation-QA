@@ -28,13 +28,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 ? (attempt.admin_graphql_api_id || `gid://shopify/SubscriptionBillingAttempt/${attempt.id}`)
                 : null;
 
-        // Dedup: skip if we already processed this exact billing attempt
+        // Dedup: check if we already processed this exact billing attempt
+        let existingAttempt = null;
         if (billingAttemptId) {
-            const existingAttempt = await db.billingAttemptLog.findUnique({
+            existingAttempt = await db.billingAttemptLog.findUnique({
                 where: { billingAttemptId },
             });
-            if (existingAttempt) {
-                console.log(`[PaymentRecovery] Duplicate webhook — already logged billingAttemptId ${billingAttemptId}`);
+            if (existingAttempt && existingAttempt.status === "failed") {
+                console.log(`[PaymentRecovery] Duplicate webhook — already logged billingAttemptId ${billingAttemptId} with failure`);
                 return new Response("OK - duplicate", { status: 200 });
             }
         }
@@ -118,30 +119,51 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         // ── Log to BillingAttemptLog for granular attempt-level tracking (ALWAYS) ──
         try {
-            await db.billingAttemptLog.create({
-                data: {
-                    shop,
-                    subscriptionContractId: normalizedContractId,
-                    billingAttemptId,
-                    source: "webhook",
-                    status: "failed",
-                    errorCode,
-                    errorMessage,
-                    orderId: originOrder?.id || null,
-                    orderNumber: originOrder?.name || null,
-                    customerEmail,
-                    customerName,
-                    amount,
-                    currency,
-                    donationName,
-                    frequency,
-                    retryNumber: currentRetryCount,
-                    rawPayload: JSON.stringify(payload).substring(0, 4000), // Store raw payload for failures only
-                },
-            });
-            console.log(`[PaymentRecovery] BillingAttemptLog entry created (Always) for ${normalizedContractId}`);
+            if (existingAttempt) {
+                await db.billingAttemptLog.update({
+                    where: { id: existingAttempt.id },
+                    data: {
+                        status: "failed",
+                        errorCode,
+                        errorMessage,
+                        orderId: originOrder?.id || null,
+                        orderNumber: originOrder?.name || null,
+                        customerEmail,
+                        customerName,
+                        amount,
+                        currency,
+                        donationName,
+                        frequency,
+                        retryNumber: currentRetryCount,
+                        rawPayload: JSON.stringify(payload).substring(0, 4000),
+                    },
+                });
+            } else {
+                await db.billingAttemptLog.create({
+                    data: {
+                        shop,
+                        subscriptionContractId: normalizedContractId,
+                        billingAttemptId,
+                        source: "webhook",
+                        status: "failed",
+                        errorCode,
+                        errorMessage,
+                        orderId: originOrder?.id || null,
+                        orderNumber: originOrder?.name || null,
+                        customerEmail,
+                        customerName,
+                        amount,
+                        currency,
+                        donationName,
+                        frequency,
+                        retryNumber: currentRetryCount,
+                        rawPayload: JSON.stringify(payload).substring(0, 4000),
+                    },
+                });
+            }
+            console.log(`[PaymentRecovery] BillingAttemptLog entry updated/created (Always) for ${normalizedContractId}`);
         } catch (logErr) {
-            console.error(`[PaymentRecovery] Failed to create BillingAttemptLog:`, logErr);
+            console.error(`[PaymentRecovery] Failed to log/update BillingAttemptLog:`, logErr);
         }
 
         if (!recoverySettings?.enabled) {

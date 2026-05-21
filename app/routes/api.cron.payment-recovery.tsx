@@ -62,6 +62,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                     ? recovery.subscriptionContractId
                     : `gid://shopify/SubscriptionContract/${recovery.subscriptionContractId}`;
 
+                // ── Check subscription contract status on Shopify first ──
+                let shopifyStatus = "ACTIVE";
+                try {
+                    const statusResponse = await admin.graphql(
+                        `#graphql
+                        query getContractStatus($id: ID!) {
+                            subscriptionContract(id: $id) {
+                                status
+                            }
+                        }`,
+                        { variables: { id: fullGid } }
+                    );
+                    const statusJson = await statusResponse.json();
+                    shopifyStatus = statusJson.data?.subscriptionContract?.status || "ACTIVE";
+                } catch (statusErr) {
+                    console.warn(`[CronRecovery] Could not verify contract status on Shopify for ${fullGid}:`, statusErr);
+                }
+
+                if (shopifyStatus === "PAUSED" || shopifyStatus === "CANCELLED") {
+                    console.log(`[CronRecovery] Contract ${fullGid} is ${shopifyStatus} on Shopify. Skipping retry and marking fallback_executed.`);
+                    await db.paymentRecoveryLog.update({
+                        where: { id: recovery.id },
+                        data: { status: "fallback_executed" },
+                    });
+                    results.fallbacksExecuted++;
+                    continue;
+                }
+
                 // 4. Attempt to create a billing attempt via Shopify GraphQL
                 console.log(`[CronRecovery] Retrying payment for contract ${fullGid} (attempt ${recovery.retryCount + 1}/${recovery.maxRetries})`);
 
@@ -210,13 +238,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                     }
                 } else {
                     // Billing attempt created but not yet ready (async processing)
-                    // The result will come via the webhook — just increment retry count
+                    // The result will come via the webhook — just increment retry count and advance nextRetryDate
                     console.log(`[CronRecovery] ⏳ Billing attempt created, awaiting result for ${fullGid}`);
+                    const nextRetry = new Date();
+                    nextRetry.setDate(nextRetry.getDate() + (recovery.retryInterval || 1));
+
                     await db.paymentRecoveryLog.update({
                         where: { id: recovery.id },
                         data: {
                             retryCount: recovery.retryCount + 1,
                             status: "retrying",
+                            nextRetryDate: nextRetry,
                         },
                     });
                     results.retrying++;

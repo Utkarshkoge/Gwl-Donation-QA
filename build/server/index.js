@@ -554,14 +554,15 @@ const action$s = async ({
     const errorCode = attempt.error_code || ((_a2 = attempt.error) == null ? void 0 : _a2.code) || "unknown";
     const errorMessage = attempt.error_message || ((_b = attempt.error) == null ? void 0 : _b.message) || "Payment failed";
     const billingAttemptId = attempt.admin_graphql_api_id || attempt.id ? attempt.admin_graphql_api_id || `gid://shopify/SubscriptionBillingAttempt/${attempt.id}` : null;
+    let existingAttempt = null;
     if (billingAttemptId) {
-      const existingAttempt = await prisma.billingAttemptLog.findUnique({
+      existingAttempt = await prisma.billingAttemptLog.findUnique({
         where: {
           billingAttemptId
         }
       });
-      if (existingAttempt) {
-        console.log(`[PaymentRecovery] Duplicate webhook — already logged billingAttemptId ${billingAttemptId}`);
+      if (existingAttempt && existingAttempt.status === "failed") {
+        console.log(`[PaymentRecovery] Duplicate webhook — already logged billingAttemptId ${billingAttemptId} with failure`);
         return new Response("OK - duplicate", {
           status: 200
         });
@@ -634,31 +635,53 @@ const action$s = async ({
     });
     const currentRetryCount = existingLogForRetryNum && (existingLogForRetryNum.status === "pending" || existingLogForRetryNum.status === "retrying") ? existingLogForRetryNum.retryCount + 1 : 0;
     try {
-      await prisma.billingAttemptLog.create({
-        data: {
-          shop,
-          subscriptionContractId: normalizedContractId,
-          billingAttemptId,
-          source: "webhook",
-          status: "failed",
-          errorCode,
-          errorMessage,
-          orderId: (originOrder == null ? void 0 : originOrder.id) || null,
-          orderNumber: (originOrder == null ? void 0 : originOrder.name) || null,
-          customerEmail,
-          customerName,
-          amount,
-          currency,
-          donationName,
-          frequency,
-          retryNumber: currentRetryCount,
-          rawPayload: JSON.stringify(payload).substring(0, 4e3)
-          // Store raw payload for failures only
-        }
-      });
-      console.log(`[PaymentRecovery] BillingAttemptLog entry created (Always) for ${normalizedContractId}`);
+      if (existingAttempt) {
+        await prisma.billingAttemptLog.update({
+          where: {
+            id: existingAttempt.id
+          },
+          data: {
+            status: "failed",
+            errorCode,
+            errorMessage,
+            orderId: (originOrder == null ? void 0 : originOrder.id) || null,
+            orderNumber: (originOrder == null ? void 0 : originOrder.name) || null,
+            customerEmail,
+            customerName,
+            amount,
+            currency,
+            donationName,
+            frequency,
+            retryNumber: currentRetryCount,
+            rawPayload: JSON.stringify(payload).substring(0, 4e3)
+          }
+        });
+      } else {
+        await prisma.billingAttemptLog.create({
+          data: {
+            shop,
+            subscriptionContractId: normalizedContractId,
+            billingAttemptId,
+            source: "webhook",
+            status: "failed",
+            errorCode,
+            errorMessage,
+            orderId: (originOrder == null ? void 0 : originOrder.id) || null,
+            orderNumber: (originOrder == null ? void 0 : originOrder.name) || null,
+            customerEmail,
+            customerName,
+            amount,
+            currency,
+            donationName,
+            frequency,
+            retryNumber: currentRetryCount,
+            rawPayload: JSON.stringify(payload).substring(0, 4e3)
+          }
+        });
+      }
+      console.log(`[PaymentRecovery] BillingAttemptLog entry updated/created (Always) for ${normalizedContractId}`);
     } catch (logErr) {
-      console.error(`[PaymentRecovery] Failed to create BillingAttemptLog:`, logErr);
+      console.error(`[PaymentRecovery] Failed to log/update BillingAttemptLog:`, logErr);
     }
     if (!(recoverySettings == null ? void 0 : recoverySettings.enabled)) {
       console.log(`[PaymentRecovery] Recovery disabled for shop ${shop}, skipping recovery logic.`);
@@ -848,14 +871,15 @@ const action$r = async ({
     const contractId = attempt.admin_graphql_api_subscription_contract_id || attempt.subscription_contract_id || "";
     const normalizedContractId = contractId.startsWith("gid://") ? contractId : `gid://shopify/SubscriptionContract/${contractId}`;
     const billingAttemptId = attempt.admin_graphql_api_id || attempt.id ? attempt.admin_graphql_api_id || `gid://shopify/SubscriptionBillingAttempt/${attempt.id}` : null;
+    let existingLog = null;
     if (billingAttemptId) {
-      const existing = await prisma.billingAttemptLog.findUnique({
+      existingLog = await prisma.billingAttemptLog.findUnique({
         where: {
           billingAttemptId
         }
       });
-      if (existing) {
-        console.log(`[BillingSuccess] Duplicate webhook — already logged billingAttemptId ${billingAttemptId}`);
+      if (existingLog && existingLog.status === "success") {
+        console.log(`[BillingSuccess] Duplicate webhook — already logged billingAttemptId ${billingAttemptId} with success`);
         return new Response("OK - duplicate", {
           status: 200
         });
@@ -911,23 +935,40 @@ const action$r = async ({
     const customerEmail = (customer == null ? void 0 : customer.email) || "";
     const customerName = `${(customer == null ? void 0 : customer.firstName) || ""} ${(customer == null ? void 0 : customer.lastName) || ""}`.trim() || "Customer";
     const orderId = attempt.order_id ? `gid://shopify/Order/${attempt.order_id}` : null;
-    await prisma.billingAttemptLog.create({
-      data: {
-        shop,
-        subscriptionContractId: normalizedContractId,
-        billingAttemptId,
-        source: "webhook",
-        status: "success",
-        orderId,
-        customerEmail,
-        customerName,
-        amount,
-        currency,
-        donationName,
-        frequency
-        // No rawPayload for success events — per design decision
-      }
-    });
+    if (existingLog) {
+      await prisma.billingAttemptLog.update({
+        where: {
+          id: existingLog.id
+        },
+        data: {
+          status: "success",
+          orderId,
+          customerEmail,
+          customerName,
+          amount,
+          currency,
+          donationName,
+          frequency
+        }
+      });
+    } else {
+      await prisma.billingAttemptLog.create({
+        data: {
+          shop,
+          subscriptionContractId: normalizedContractId,
+          billingAttemptId,
+          source: "webhook",
+          status: "success",
+          orderId,
+          customerEmail,
+          customerName,
+          amount,
+          currency,
+          donationName,
+          frequency
+        }
+      });
+    }
     console.log(`[BillingSuccess] Logged successful billing attempt for contract ${normalizedContractId}`);
     const recoveryLog = await prisma.paymentRecoveryLog.findUnique({
       where: {
@@ -1710,7 +1751,7 @@ const route9 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProper
 const loader$u = async ({
   request
 }) => {
-  var _a2, _b, _c, _d, _e;
+  var _a2, _b, _c, _d, _e, _f, _g;
   const url = new URL(request.url);
   const secret = url.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET || "galaxy_reminder_secret_123";
@@ -1770,6 +1811,36 @@ const loader$u = async ({
           admin
         } = await unauthenticated.admin(recovery.shop);
         const fullGid = recovery.subscriptionContractId.startsWith("gid://") ? recovery.subscriptionContractId : `gid://shopify/SubscriptionContract/${recovery.subscriptionContractId}`;
+        let shopifyStatus = "ACTIVE";
+        try {
+          const statusResponse = await admin.graphql(`#graphql
+                        query getContractStatus($id: ID!) {
+                            subscriptionContract(id: $id) {
+                                status
+                            }
+                        }`, {
+            variables: {
+              id: fullGid
+            }
+          });
+          const statusJson = await statusResponse.json();
+          shopifyStatus = ((_b = (_a2 = statusJson.data) == null ? void 0 : _a2.subscriptionContract) == null ? void 0 : _b.status) || "ACTIVE";
+        } catch (statusErr) {
+          console.warn(`[CronRecovery] Could not verify contract status on Shopify for ${fullGid}:`, statusErr);
+        }
+        if (shopifyStatus === "PAUSED" || shopifyStatus === "CANCELLED") {
+          console.log(`[CronRecovery] Contract ${fullGid} is ${shopifyStatus} on Shopify. Skipping retry and marking fallback_executed.`);
+          await prisma.paymentRecoveryLog.update({
+            where: {
+              id: recovery.id
+            },
+            data: {
+              status: "fallback_executed"
+            }
+          });
+          results.fallbacksExecuted++;
+          continue;
+        }
         console.log(`[CronRecovery] Retrying payment for contract ${fullGid} (attempt ${recovery.retryCount + 1}/${recovery.maxRetries})`);
         const idempotencyKey = `recovery_${recovery.id}_${recovery.retryCount + 1}_${Date.now()}`;
         const billingResponse = await admin.graphql(`#graphql
@@ -1798,8 +1869,8 @@ const loader$u = async ({
           }
         });
         const billingJson = await billingResponse.json();
-        const billingResult = (_a2 = billingJson.data) == null ? void 0 : _a2.subscriptionBillingAttemptCreate;
-        if (((_b = billingResult == null ? void 0 : billingResult.userErrors) == null ? void 0 : _b.length) > 0) {
+        const billingResult = (_c = billingJson.data) == null ? void 0 : _c.subscriptionBillingAttemptCreate;
+        if (((_d = billingResult == null ? void 0 : billingResult.userErrors) == null ? void 0 : _d.length) > 0) {
           const errMsg = billingResult.userErrors[0].message;
           console.error(`[CronRecovery] Billing attempt userError: ${errMsg}`);
           await handleRetryFailure(recovery, recoverySettings, errMsg);
@@ -1832,7 +1903,7 @@ const loader$u = async ({
                 orderNumber: billingAttempt.order.name || recovery.orderNumber || "N/A",
                 type: "receipt",
                 shop: recovery.shop,
-                frequency: ((_c = recovery.frequency) == null ? void 0 : _c.toLowerCase().includes("month")) ? "Monthly" : "Weekly",
+                frequency: ((_e = recovery.frequency) == null ? void 0 : _e.toLowerCase().includes("month")) ? "Monthly" : "Weekly",
                 donationName: recovery.donationName || "Recurring Donation"
               });
             } catch (emailErr) {
@@ -1848,8 +1919,8 @@ const loader$u = async ({
                 billingAttemptId: billingAttempt.id || null,
                 source: "cron_retry",
                 status: "success",
-                orderId: ((_d = billingAttempt.order) == null ? void 0 : _d.id) || null,
-                orderNumber: ((_e = billingAttempt.order) == null ? void 0 : _e.name) || null,
+                orderId: ((_f = billingAttempt.order) == null ? void 0 : _f.id) || null,
+                orderNumber: ((_g = billingAttempt.order) == null ? void 0 : _g.name) || null,
                 customerEmail: recovery.customerEmail,
                 customerName: recovery.customerName,
                 amount: recovery.amount,
@@ -1897,13 +1968,16 @@ const loader$u = async ({
           }
         } else {
           console.log(`[CronRecovery] ⏳ Billing attempt created, awaiting result for ${fullGid}`);
+          const nextRetry = /* @__PURE__ */ new Date();
+          nextRetry.setDate(nextRetry.getDate() + (recovery.retryInterval || 1));
           await prisma.paymentRecoveryLog.update({
             where: {
               id: recovery.id
             },
             data: {
               retryCount: recovery.retryCount + 1,
-              status: "retrying"
+              status: "retrying",
+              nextRetryDate: nextRetry
             }
           });
           results.retrying++;
@@ -3111,6 +3185,8 @@ const action$g = async ({
     let directDonationAmountCents = 0;
     let hasRoundUpDonation = false;
     let roundUpAmountCents = 0;
+    let directOneTimeDonationAmtCents = 0;
+    let recurringDonationAmtCents = 0;
     let donationLineItems = [];
     if (payload.line_items && Array.isArray(payload.line_items)) {
       for (const item of payload.line_items) {
@@ -3165,6 +3241,7 @@ const action$g = async ({
               const lineDiscount2 = parseFloat(item.total_discount || "0");
               const recurringAmt = Math.max(0, basePrice2 - lineDiscount2);
               donationAmtCents += Math.round(recurringAmt * 100);
+              recurringDonationAmtCents += Math.round(recurringAmt * 100);
               hasCampaignDonation = true;
               hasCampaignRecurring = true;
               campaignRecurringNames.push(matchingCampaign.name || "Campaign Donation");
@@ -3265,7 +3342,14 @@ const action$g = async ({
       if (String(lineItem.product_id) === String(DONATION_PRODUCT_ID)) {
         hasDirectDonationProduct = true;
         directDonationName = lineItem.title || "Charity Donation";
-        directDonationAmountCents += parseFloat(lineItem.price || 0) * 100 * (lineItem.quantity || 1);
+        const itemPriceCents = Math.round(parseFloat(lineItem.price || 0) * 100) * (lineItem.quantity || 1);
+        directDonationAmountCents += itemPriceCents;
+        const isItemRecurring = !!lineItem.selling_plan_allocation || (lineItem.properties || []).some((p) => ["selling_plan", "_selling_plan_id"].includes(p.name));
+        if (isItemRecurring) {
+          recurringDonationAmtCents += itemPriceCents;
+        } else {
+          directOneTimeDonationAmtCents += itemPriceCents;
+        }
         const itemAmt = (parseFloat(lineItem.price || 0) * (lineItem.quantity || 1)).toFixed(2);
         donationLineItems.push({
           title: lineItem.title || "Charity Donation",
@@ -3548,7 +3632,7 @@ ${order.billing_address.country}` : "";
               shop,
               orderId: orderIdStr,
               orderNumber: order.name,
-              donationAmount: parseFloat(donationAmtFormatted),
+              donationAmount: recurringDonationAmtCents / 100,
               orderTotal: parseFloat(order.total_price || 0),
               currency: order.currency || "USD",
               receiptStatus: emailStatus,
@@ -3603,7 +3687,7 @@ ${order.billing_address.country}` : "";
                   campaignId: campaign.id,
                   orderId,
                   orderNumber: order.name,
-                  amount: parseFloat(donationAmtFormatted),
+                  amount: directOneTimeDonationAmtCents / 100,
                   currency,
                   donorName: currentCustomerName,
                   donorEmail: currentCustomerEmail,
@@ -3612,7 +3696,7 @@ ${order.billing_address.country}` : "";
                   createdAt
                 },
                 update: {
-                  amount: parseFloat(donationAmtFormatted),
+                  amount: directOneTimeDonationAmtCents / 100,
                   orderNumber: order.name
                 }
               });
@@ -3636,7 +3720,7 @@ ${order.billing_address.country}` : "";
               shop,
               orderId: orderIdStr,
               orderNumber: order.name,
-              donationAmount: parseFloat(donationAmtFormatted),
+              donationAmount: roundUpAmountCents / 100,
               orderTotal: parseFloat(order.total_price || 0),
               currency: order.currency || "USD",
               status: "active",
@@ -3659,7 +3743,7 @@ ${order.billing_address.country}` : "";
               shop,
               orderId: orderIdStr,
               orderNumber: order.name,
-              donationAmount: parseFloat(donationAmtFormatted),
+              donationAmount: recurringDonationAmtCents / 100,
               orderTotal: parseFloat(order.total_price || 0),
               currency: order.currency || "USD",
               receiptStatus: emailStatus,
@@ -3760,16 +3844,24 @@ ${order.billing_address.country}` : "";
           }));
           let donationLabel = "Donation Amount";
           let donationTypeLabel = "Donation Type";
-          let typeValue = "POS";
+          const activeTypes = [];
           if (hasCampaignRecurring && frequency !== "one_time") {
-            typeValue = frequency === "monthly" ? "Monthly" : "Weekly";
-          } else if (hasCampaignDonation || hasDirectDonationProduct && frequency === "one_time") {
-            typeValue = "Preset";
-          } else if (hasDirectDonationProduct) {
-            typeValue = frequency === "monthly" ? "Monthly" : "Weekly";
-          } else if (hasRoundUpDonation) {
-            typeValue = "Round-Up";
+            activeTypes.push(frequency === "monthly" ? "Monthly" : "Weekly");
           }
+          if (hasCampaignDonation || hasDirectDonationProduct && frequency === "one_time") {
+            activeTypes.push("Preset");
+          }
+          if (hasDirectDonationProduct && frequency !== "one_time") {
+            activeTypes.push(frequency === "monthly" ? "Monthly" : "Weekly");
+          }
+          if (hasRoundUpDonation) {
+            activeTypes.push("Round-Up");
+          }
+          if (activeTypes.length === 0) {
+            activeTypes.push("POS");
+          }
+          const uniqueTypes = Array.from(new Set(activeTypes));
+          const typeValue = uniqueTypes.join(", ");
           const finalAttrs = currentAttrs.filter((a) => a.key !== donationLabel && a.key !== donationTypeLabel);
           finalAttrs.push({
             key: donationLabel,

@@ -56,6 +56,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         let directDonationAmountCents = 0;
         let hasRoundUpDonation = false;
         let roundUpAmountCents = 0;
+        let directOneTimeDonationAmtCents = 0;
+        let recurringDonationAmtCents = 0;
 
         // Collect all donation line items for multi-product email support
         let donationLineItems: Array<{ title: string; amount: string; image?: string; sellingPlan?: string }> = [];
@@ -125,6 +127,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             const lineDiscount = parseFloat(item.total_discount || "0");
                             const recurringAmt = Math.max(0, basePrice - lineDiscount);
                             donationAmtCents += Math.round(recurringAmt * 100);
+                            recurringDonationAmtCents += Math.round(recurringAmt * 100);
                             hasCampaignDonation = true;
                             hasCampaignRecurring = true;
                             campaignRecurringNames.push(matchingCampaign.name || "Campaign Donation");
@@ -232,7 +235,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             if (String(lineItem.product_id) === String(DONATION_PRODUCT_ID)) {
                 hasDirectDonationProduct = true;
                 directDonationName = lineItem.title || "Charity Donation";
-                directDonationAmountCents += (parseFloat(lineItem.price || 0) * 100) * (lineItem.quantity || 1);
+                const itemPriceCents = Math.round(parseFloat(lineItem.price || 0) * 100) * (lineItem.quantity || 1);
+                directDonationAmountCents += itemPriceCents;
+                
+                const isItemRecurring = !!(lineItem.selling_plan_allocation) || (lineItem.properties || []).some(
+                    (p: any) => ["selling_plan", "_selling_plan_id"].includes(p.name)
+                );
+                if (isItemRecurring) {
+                    recurringDonationAmtCents += itemPriceCents;
+                } else {
+                    directOneTimeDonationAmtCents += itemPriceCents;
+                }
+
                 // Collect for multi-product email
                 const itemAmt = (parseFloat(lineItem.price || 0) * (lineItem.quantity || 1)).toFixed(2);
                 donationLineItems.push({
@@ -527,7 +541,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             shop,
                             orderId: orderIdStr,
                             orderNumber: order.name,
-                            donationAmount: parseFloat(donationAmtFormatted),
+                            donationAmount: recurringDonationAmtCents / 100,
                             orderTotal: parseFloat(order.total_price || 0),
                             currency: order.currency || "USD",
                             receiptStatus: emailStatus,
@@ -571,7 +585,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                                     campaignId: campaign.id,
                                     orderId: orderId,
                                     orderNumber: order.name,
-                                    amount: parseFloat(donationAmtFormatted),
+                                    amount: directOneTimeDonationAmtCents / 100,
                                     currency: currency,
                                     donorName: currentCustomerName,
                                     donorEmail: currentCustomerEmail,
@@ -580,7 +594,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                                     createdAt: createdAt,
                                 },
                                 update: {
-                                    amount: parseFloat(donationAmtFormatted),
+                                    amount: directOneTimeDonationAmtCents / 100,
                                     orderNumber: order.name,
                                 },
                             });
@@ -603,7 +617,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             shop,
                             orderId: orderIdStr,
                             orderNumber: order.name,
-                            donationAmount: parseFloat(donationAmtFormatted),
+                            donationAmount: roundUpAmountCents / 100,
                             orderTotal: parseFloat(order.total_price || 0),
                             currency: order.currency || "USD",
                             status: "active",
@@ -622,7 +636,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             shop,
                             orderId: orderIdStr,
                             orderNumber: order.name,
-                            donationAmount: parseFloat(donationAmtFormatted),
+                            donationAmount: recurringDonationAmtCents / 100,
                             orderTotal: parseFloat(order.total_price || 0),
                             currency: order.currency || "USD",
                             receiptStatus: emailStatus,
@@ -721,18 +735,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
                     let donationLabel = "Donation Amount";
                     let donationTypeLabel = "Donation Type";
-                    let typeValue = "POS";
-
+                    
+                    const activeTypes: string[] = [];
                     if (hasCampaignRecurring && frequency !== "one_time") {
-                        // Campaign product with selling plan
-                        typeValue = frequency === "monthly" ? "Monthly" : "Weekly";
-                    } else if (hasCampaignDonation || (hasDirectDonationProduct && frequency === "one_time")) {
-                        typeValue = "Preset";
-                    } else if (hasDirectDonationProduct) {
-                        typeValue = frequency === "monthly" ? "Monthly" : "Weekly";
-                    } else if (hasRoundUpDonation) {
-                        typeValue = "Round-Up";
+                        activeTypes.push(frequency === "monthly" ? "Monthly" : "Weekly");
                     }
+                    if (hasCampaignDonation || (hasDirectDonationProduct && frequency === "one_time")) {
+                        activeTypes.push("Preset");
+                    }
+                    if (hasDirectDonationProduct && frequency !== "one_time") {
+                        activeTypes.push(frequency === "monthly" ? "Monthly" : "Weekly");
+                    }
+                    if (hasRoundUpDonation) {
+                        activeTypes.push("Round-Up");
+                    }
+
+                    if (activeTypes.length === 0) {
+                        activeTypes.push("POS");
+                    }
+
+                    // Deduplicate and join with comma
+                    const uniqueTypes = Array.from(new Set(activeTypes));
+                    const typeValue = uniqueTypes.join(", ");
 
                     // Remove existing if any to ensure fresh values
                     const finalAttrs = currentAttrs.filter(a => a.key !== donationLabel && a.key !== donationTypeLabel);

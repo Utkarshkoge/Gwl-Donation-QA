@@ -28,13 +28,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 ? (attempt.admin_graphql_api_id || `gid://shopify/SubscriptionBillingAttempt/${attempt.id}`)
                 : null;
 
-        // Dedup: skip if we already logged this exact billing attempt
+        // Dedup: check if we already logged this exact billing attempt
+        let existingLog = null;
         if (billingAttemptId) {
-            const existing = await db.billingAttemptLog.findUnique({
+            existingLog = await db.billingAttemptLog.findUnique({
                 where: { billingAttemptId },
             });
-            if (existing) {
-                console.log(`[BillingSuccess] Duplicate webhook — already logged billingAttemptId ${billingAttemptId}`);
+            if (existingLog && existingLog.status === "success") {
+                console.log(`[BillingSuccess] Duplicate webhook — already logged billingAttemptId ${billingAttemptId} with success`);
                 return new Response("OK - duplicate", { status: 200 });
             }
         }
@@ -95,23 +96,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             : null;
 
         // 1. Log the successful billing attempt
-        await db.billingAttemptLog.create({
-            data: {
-                shop,
-                subscriptionContractId: normalizedContractId,
-                billingAttemptId,
-                source: "webhook",
-                status: "success",
-                orderId,
-                customerEmail,
-                customerName,
-                amount,
-                currency,
-                donationName,
-                frequency,
-                // No rawPayload for success events — per design decision
-            },
-        });
+        if (existingLog) {
+            await db.billingAttemptLog.update({
+                where: { id: existingLog.id },
+                data: {
+                    status: "success",
+                    orderId,
+                    customerEmail,
+                    customerName,
+                    amount,
+                    currency,
+                    donationName,
+                    frequency,
+                },
+            });
+        } else {
+            await db.billingAttemptLog.create({
+                data: {
+                    shop,
+                    subscriptionContractId: normalizedContractId,
+                    billingAttemptId,
+                    source: "webhook",
+                    status: "success",
+                    orderId,
+                    customerEmail,
+                    customerName,
+                    amount,
+                    currency,
+                    donationName,
+                    frequency,
+                },
+            });
+        }
 
         console.log(`[BillingSuccess] Logged successful billing attempt for contract ${normalizedContractId}`);
 
