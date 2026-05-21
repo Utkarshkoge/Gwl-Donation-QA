@@ -252,7 +252,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 donationLineItems.push({
                     title: lineItem.title || "Charity Donation",
                     amount: itemAmt,
-                    sellingPlan: lineItem.selling_plan_allocation ? "Recurring Donation" : undefined,
+                    sellingPlan: isItemRecurring ? "Recurring Donation" : undefined,
                 });
             }
 
@@ -529,8 +529,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
 
             try {
-                if (hasDirectDonationProduct && frequency !== "one_time") {
-                    // Only log actual Monthly/Weekly subscriptions to RecurringDonationLog
+                let loggedAny = false;
+
+                // 1. Recurring Donation (Global subscription product or Campaign product with a selling plan)
+                if ((hasDirectDonationProduct && frequency !== "one_time") || (hasCampaignRecurring && frequency !== "one_time")) {
                     await db.recurringDonationLog.upsert({
                         where: { orderId: orderIdStr },
                         update: {
@@ -552,8 +554,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             type: "recurring",
                         },
                     });
-                } else if (hasDirectDonationProduct && frequency === "one_time") {
-                    // ── One-time = Preset: Insert into Donation table ──
+                    loggedAny = true;
+                    console.log(`[Webhook] Wrote recurring donation to RecurringDonationLog for Order ${order.name}.`);
+                }
+
+                // 2. One-time Global Preset Donation
+                if (hasDirectDonationProduct && frequency === "one_time") {
                     try {
                         let campaign = await db.campaign.findFirst({
                             where: {
@@ -592,13 +598,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                                     shopifyProductId: String(DONATION_PRODUCT_ID),
                                     shopifyVariantId: variantIdStr,
                                     createdAt: createdAt,
+                                    receiptStatus: emailStatus,
+                                    receiptSentAt: sentDate,
                                 },
                                 update: {
                                     amount: directOneTimeDonationAmtCents / 100,
                                     orderNumber: order.name,
+                                    receiptStatus: emailStatus,
+                                    receiptSentAt: sentDate,
                                 },
                             });
                             hasCampaignDonation = true;
+                            loggedAny = true;
                             console.log(`[Webhook] Recorded One-time global donation as Preset under campaign: ${campaign.name}`);
                         } else {
                             console.warn(`[Webhook] No campaign found to link one-time donation for shop ${shop}`);
@@ -606,8 +617,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     } catch (dbErr) {
                         console.error("[Webhook] Error recording one-time donation:", dbErr);
                     }
-                } else if (hasRoundUpDonation) {
-                    // ── Fix: Roundup donations go to their own dedicated table ──
+                }
+
+                // 3. Round-up Donation
+                if (hasRoundUpDonation) {
                     await db.roundUpDonationLog.upsert({
                         where: { orderId: orderIdStr },
                         update: {
@@ -627,41 +640,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             type: "roundup",
                         },
                     });
-                } else if (hasCampaignRecurring && frequency !== "one_time") {
-                    // Campaign product ordered with a selling plan → write to RecurringDonationLog
-                    await db.recurringDonationLog.upsert({
-                        where: { orderId: orderIdStr },
-                        update: { subscriptionContractId, type: "recurring" },
-                        create: {
-                            shop,
-                            orderId: orderIdStr,
-                            orderNumber: order.name,
-                            donationAmount: recurringDonationAmtCents / 100,
-                            orderTotal: parseFloat(order.total_price || 0),
-                            currency: order.currency || "USD",
-                            receiptStatus: emailStatus,
-                            receiptSentAt: sentDate,
-                            sellingPlanId: recurringSellingPlanId,
-                            frequency,
-                            subscriptionContractId,
-                            type: "recurring",
-                        },
-                    });
-                    console.log(`[Webhook] Wrote campaign recurring donation to RecurringDonationLog for Order ${order.name}.`);
-                } else if (hasCampaignDonation) {
-                    // One-time campaign (preset) donations are already in the Donation table.
-                    // Update their receiptStatus now that we know if the email was sent.
+                    loggedAny = true;
+                    console.log(`[Webhook] Wrote roundup donation to roundUpDonationLog for Order ${order.name}.`);
+                }
+
+                // 4. One-time Campaign Preset Donation (updating its status if written during line-items loop)
+                if (hasCampaignDonation) {
                     try {
                         await db.donation.updateMany({
                             where: { orderId: orderId, receiptStatus: { not: "sent" } },
-                            data: { receiptStatus: emailStatus } as any,
+                            data: { receiptStatus: emailStatus, receiptSentAt: sentDate } as any,
                         });
+                        loggedAny = true;
                         console.log(`[Webhook] Updated Donation table receiptStatus to "${emailStatus}" for Order ${order.name}.`);
                     } catch (updateErr) {
                         console.warn("[Webhook] Could not update donation receipt status (non-fatal):", updateErr);
                     }
-                } else {
-                    // POS donations only
+                }
+
+                // 5. Fallback POS Donation (only if no other donation types logged)
+                if (!loggedAny) {
                     await db.posDonationLog.upsert({
                         where: { orderId: orderIdStr },
                         update: {
@@ -681,6 +679,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                             type: "pos",
                         },
                     });
+                    console.log(`[Webhook] Wrote POS donation to posDonationLog for Order ${order.name}.`);
                 }
             } catch (e) {
                 console.error("DB Log Error:", e);

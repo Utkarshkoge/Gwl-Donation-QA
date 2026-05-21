@@ -358,26 +358,40 @@ async function sendDonationReceipt({
       </div>
 
       <div style="background-color: #f9f9f9; border-radius: 12px; padding: 20px; margin-bottom: 32px;">
-        ${lineItems && lineItems.length > 1 ? lineItems.map((item, idx) => `
-            <div style="display: flex; align-items: center; gap: 16px;${idx > 0 ? " border-top: 1px solid #eee; margin-top: 12px; padding-top: 12px;" : ""}">
-              ${item.image ? `<img src="${item.image}" alt="${item.title}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #eee;" />` : `<div style="width: 60px; height: 60px; background: #eee; border-radius: 8px;"></div>`}
-              <div style="flex: 1; padding-left: 8px;">
-                <div style="font-weight: 700; font-size: 15px; color: #202223;">${item.title}</div>
-                <div style="font-size: 13px; color: #6D7175; margin-top: 2px;">${item.sellingPlan ? `Selling Plan: ${item.sellingPlan}` : `${frequency || "One-time"} Donation`}</div>
-                <div style="font-size: 13px; color: #6D7175;">Quantity: 1</div>
-              </div>
-              <div style="font-weight: 700; font-size: 15px; color: #202223;">${item.amount}</div>
-            </div>
-          `).join("") : `
-            <div style="display: flex; align-items: center; gap: 16px;">
-              ${productImage ? `<img src="${productImage}" alt="${productTitle || "Donation"}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #eee;" />` : `<div style="width: 80px; height: 80px; background: #eee; border-radius: 8px;"></div>`}
-              <div style="flex: 1; padding-left: 16px;">
-                <div style="font-weight: 700; font-size: 16px; color: #202223;">${productTitle || donationName || "Charity Donation"}</div>
-                <div style="font-size: 14px; color: #6D7175; margin-top: 4px;">Selling Plan: ${frequency} Donation</div>
+        ${lineItems && lineItems.length > 1 ? `
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse;">
+            ${lineItems.map((item, idx) => `
+              <tr style="${idx > 0 ? "border-top: 1px solid #eee;" : ""}">
+                <td style="padding: 12px 0; vertical-align: middle; width: 60px;">
+                  ${item.image ? `<img src="${item.image}" alt="${item.title}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #eee; display: block;" />` : `<div style="width: 60px; height: 60px; background: #eee; border-radius: 8px;"></div>`}
+                </td>
+                <td style="padding: 12px 16px; vertical-align: middle;">
+                  <div style="font-weight: 700; font-size: 15px; color: #202223; word-break: break-all;">${item.title}</div>
+                  <div style="font-size: 13px; color: #6D7175; margin-top: 2px;">${item.sellingPlan ? `Selling Plan: ${item.sellingPlan}` : `One-time Donation`}</div>
+                  <div style="font-size: 13px; color: #6D7175;">Quantity: 1</div>
+                </td>
+                <td style="padding: 12px 0; vertical-align: middle; text-align: right; font-weight: 700; font-size: 15px; color: #202223; white-space: nowrap;">
+                  ${item.amount}
+                </td>
+              </tr>
+            `).join("")}
+          </table>
+          ` : `
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 0; vertical-align: middle; width: 80px;">
+                ${productImage ? `<img src="${productImage}" alt="${productTitle || "Donation"}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #eee; display: block;" />` : `<div style="width: 80px; height: 80px; background: #eee; border-radius: 8px;"></div>`}
+              </td>
+              <td style="padding: 0 16px; vertical-align: middle;">
+                <div style="font-weight: 700; font-size: 16px; color: #202223; word-break: break-all;">${productTitle || donationName || "Charity Donation"}</div>
+                <div style="font-size: 14px; color: #6D7175; margin-top: 4px;">${frequency && frequency !== "one_time" ? `Selling Plan: ${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Donation` : `One-time Donation`}</div>
                 <div style="font-size: 14px; color: #6D7175;">Quantity: 1</div>
-              </div>
-              <div style="font-weight: 700; font-size: 16px; color: #202223;">${amount}</div>
-            </div>
+              </td>
+              <td style="padding: 0; vertical-align: middle; text-align: right; font-weight: 700; font-size: 16px; color: #202223; white-space: nowrap;">
+                ${amount}
+              </td>
+            </tr>
+          </table>
           `}
       </div>
 
@@ -3354,7 +3368,7 @@ const action$g = async ({
         donationLineItems.push({
           title: lineItem.title || "Charity Donation",
           amount: itemAmt,
-          sellingPlan: lineItem.selling_plan_allocation ? "Recurring Donation" : void 0
+          sellingPlan: isItemRecurring ? "Recurring Donation" : void 0
         });
       }
       const typeProp = (lineItem.properties || []).find((p) => {
@@ -3619,7 +3633,8 @@ ${order.billing_address.country}` : "";
         emailStatus = currentCustomerEmail !== "No Email provided" ? "skipped" : "failed";
       }
       try {
-        if (hasDirectDonationProduct && frequency !== "one_time") {
+        let loggedAny = false;
+        if (hasDirectDonationProduct && frequency !== "one_time" || hasCampaignRecurring && frequency !== "one_time") {
           await prisma.recurringDonationLog.upsert({
             where: {
               orderId: orderIdStr
@@ -3643,7 +3658,10 @@ ${order.billing_address.country}` : "";
               type: "recurring"
             }
           });
-        } else if (hasDirectDonationProduct && frequency === "one_time") {
+          loggedAny = true;
+          console.log(`[Webhook] Wrote recurring donation to RecurringDonationLog for Order ${order.name}.`);
+        }
+        if (hasDirectDonationProduct && frequency === "one_time") {
           try {
             let campaign = await prisma.campaign.findFirst({
               where: {
@@ -3693,14 +3711,19 @@ ${order.billing_address.country}` : "";
                   donorEmail: currentCustomerEmail,
                   shopifyProductId: String(DONATION_PRODUCT_ID),
                   shopifyVariantId: variantIdStr,
-                  createdAt
+                  createdAt,
+                  receiptStatus: emailStatus,
+                  receiptSentAt: sentDate
                 },
                 update: {
                   amount: directOneTimeDonationAmtCents / 100,
-                  orderNumber: order.name
+                  orderNumber: order.name,
+                  receiptStatus: emailStatus,
+                  receiptSentAt: sentDate
                 }
               });
               hasCampaignDonation = true;
+              loggedAny = true;
               console.log(`[Webhook] Recorded One-time global donation as Preset under campaign: ${campaign.name}`);
             } else {
               console.warn(`[Webhook] No campaign found to link one-time donation for shop ${shop}`);
@@ -3708,7 +3731,8 @@ ${order.billing_address.country}` : "";
           } catch (dbErr) {
             console.error("[Webhook] Error recording one-time donation:", dbErr);
           }
-        } else if (hasRoundUpDonation) {
+        }
+        if (hasRoundUpDonation) {
           await prisma.roundUpDonationLog.upsert({
             where: {
               orderId: orderIdStr
@@ -3730,32 +3754,10 @@ ${order.billing_address.country}` : "";
               type: "roundup"
             }
           });
-        } else if (hasCampaignRecurring && frequency !== "one_time") {
-          await prisma.recurringDonationLog.upsert({
-            where: {
-              orderId: orderIdStr
-            },
-            update: {
-              subscriptionContractId,
-              type: "recurring"
-            },
-            create: {
-              shop,
-              orderId: orderIdStr,
-              orderNumber: order.name,
-              donationAmount: recurringDonationAmtCents / 100,
-              orderTotal: parseFloat(order.total_price || 0),
-              currency: order.currency || "USD",
-              receiptStatus: emailStatus,
-              receiptSentAt: sentDate,
-              sellingPlanId: recurringSellingPlanId,
-              frequency,
-              subscriptionContractId,
-              type: "recurring"
-            }
-          });
-          console.log(`[Webhook] Wrote campaign recurring donation to RecurringDonationLog for Order ${order.name}.`);
-        } else if (hasCampaignDonation) {
+          loggedAny = true;
+          console.log(`[Webhook] Wrote roundup donation to roundUpDonationLog for Order ${order.name}.`);
+        }
+        if (hasCampaignDonation) {
           try {
             await prisma.donation.updateMany({
               where: {
@@ -3765,14 +3767,17 @@ ${order.billing_address.country}` : "";
                 }
               },
               data: {
-                receiptStatus: emailStatus
+                receiptStatus: emailStatus,
+                receiptSentAt: sentDate
               }
             });
+            loggedAny = true;
             console.log(`[Webhook] Updated Donation table receiptStatus to "${emailStatus}" for Order ${order.name}.`);
           } catch (updateErr) {
             console.warn("[Webhook] Could not update donation receipt status (non-fatal):", updateErr);
           }
-        } else {
+        }
+        if (!loggedAny) {
           await prisma.posDonationLog.upsert({
             where: {
               orderId: orderIdStr
@@ -3794,6 +3799,7 @@ ${order.billing_address.country}` : "";
               type: "pos"
             }
           });
+          console.log(`[Webhook] Wrote POS donation to posDonationLog for Order ${order.name}.`);
         }
       } catch (e) {
         console.error("DB Log Error:", e);
