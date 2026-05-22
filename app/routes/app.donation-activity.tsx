@@ -94,6 +94,13 @@ export default function DonationActivity() {
         shopify.toast.show("Attempting to resend receipt...");
     }, [resendFetcher, shopify]);
 
+    const handleDownload = useCallback((logId: string, source: string) => {
+        const param = source === "preset" ? "donationId" : "logId";
+        const downloadUrl = `/api/download-receipt?${param}=${encodeURIComponent(logId)}`;
+        // Use open() to trigger the file download
+        window.open(downloadUrl, "_blank");
+    }, []);
+
     // Track last resend response to show feedback only once
     const lastResendRef = useRef<string | null>(null);
     useEffect(() => {
@@ -323,30 +330,52 @@ export default function DonationActivity() {
                                                 </div>
                                             </td>
                                             <td style={{ padding: "12px 10px", textAlign: "right", background: "white" }}>
-                                                <div
-                                                    title={log.isResent ? "Already resent. You can resend only once" : "You can resend only once"}
-                                                    style={{ display: "inline-block" }}
-                                                >
+                                                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px" }}>
                                                     <button
-                                                        onClick={() => handleResend(log.id)}
-                                                        disabled={(resendFetcher.state !== "idle" && resendFetcher.formData?.get("logId") === log.id) || log.isResent}
+                                                        onClick={() => handleDownload(log.id, log.source)}
+                                                        title="Download receipt as PDF"
                                                         style={{
-                                                            cursor: log.isResent ? "not-allowed" : "pointer",
-                                                            background: "#202223",
+                                                            cursor: "pointer",
+                                                            background: "#6C4A79",
                                                             color: "white",
                                                             border: "none",
-                                                            padding: "8px 16px",
+                                                            padding: "8px 14px",
                                                             borderRadius: "8px",
                                                             fontSize: "12px",
                                                             fontWeight: "600",
-                                                            opacity: log.isResent ? 0.4 : (resendFetcher.state !== "idle" && resendFetcher.formData?.get("logId") === log.id ? 0.7 : 1),
                                                             display: "flex",
                                                             alignItems: "center",
                                                             gap: "4px"
                                                         }}
                                                     >
-                                                        {resendFetcher.state !== "idle" && resendFetcher.formData?.get("logId") === log.id ? "Sending..." : "Resend"}
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                                        Download
                                                     </button>
+                                                    <div
+                                                        title={log.isResent ? "Already resent. You can resend only once" : "You can resend only once"}
+                                                        style={{ display: "inline-block" }}
+                                                    >
+                                                        <button
+                                                            onClick={() => handleResend(log.id)}
+                                                            disabled={(resendFetcher.state !== "idle" && resendFetcher.formData?.get("logId") === log.id) || log.isResent}
+                                                            style={{
+                                                                cursor: log.isResent ? "not-allowed" : "pointer",
+                                                                background: "#202223",
+                                                                color: "white",
+                                                                border: "none",
+                                                                padding: "8px 14px",
+                                                                borderRadius: "8px",
+                                                                fontSize: "12px",
+                                                                fontWeight: "600",
+                                                                opacity: log.isResent ? 0.4 : (resendFetcher.state !== "idle" && resendFetcher.formData?.get("logId") === log.id ? 0.7 : 1),
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                gap: "4px"
+                                                            }}
+                                                        >
+                                                            {resendFetcher.state !== "idle" && resendFetcher.formData?.get("logId") === log.id ? "Sending..." : "Resend"}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
