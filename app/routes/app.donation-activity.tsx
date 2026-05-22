@@ -94,12 +94,52 @@ export default function DonationActivity() {
         shopify.toast.show("Attempting to resend receipt...");
     }, [resendFetcher, shopify]);
 
-    const handleDownload = useCallback((logId: string, source: string) => {
+    const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+    const handleDownload = useCallback(async (logId: string, source: string) => {
         const param = source === "preset" ? "donationId" : "logId";
         const downloadUrl = `/api/download-receipt?${param}=${encodeURIComponent(logId)}`;
-        // Use open() to trigger the file download
-        window.open(downloadUrl, "_blank");
-    }, []);
+
+        setDownloadingId(logId);
+        shopify.toast.show("Generating receipt PDF...");
+
+        try {
+            const response = await fetch(downloadUrl);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                shopify.toast.show(errorText || "Failed to generate receipt", { isError: true } as any);
+                setDownloadingId(null);
+                return;
+            }
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+
+            // Extract filename from Content-Disposition header or fallback
+            const disposition = response.headers.get("Content-Disposition");
+            let filename = "receipt.pdf";
+            if (disposition) {
+                const match = disposition.match(/filename="?([^";\s]+)"?/);
+                if (match) filename = match[1];
+            }
+
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(blobUrl);
+
+            shopify.toast.show("Receipt downloaded!");
+        } catch (error: any) {
+            console.error("[DownloadReceipt] Error:", error);
+            shopify.toast.show("Failed to download receipt", { isError: true } as any);
+        } finally {
+            setDownloadingId(null);
+        }
+    }, [shopify]);
 
     // Track last resend response to show feedback only once
     const lastResendRef = useRef<string | null>(null);
@@ -333,9 +373,10 @@ export default function DonationActivity() {
                                                 <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px" }}>
                                                     <button
                                                         onClick={() => handleDownload(log.id, log.source)}
+                                                        disabled={downloadingId === log.id}
                                                         title="Download receipt as PDF"
                                                         style={{
-                                                            cursor: "pointer",
+                                                            cursor: downloadingId === log.id ? "wait" : "pointer",
                                                             background: "#6C4A79",
                                                             color: "white",
                                                             border: "none",
@@ -343,13 +384,14 @@ export default function DonationActivity() {
                                                             borderRadius: "8px",
                                                             fontSize: "12px",
                                                             fontWeight: "600",
+                                                            opacity: downloadingId === log.id ? 0.7 : 1,
                                                             display: "flex",
                                                             alignItems: "center",
                                                             gap: "4px"
                                                         }}
                                                     >
                                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                                        Download
+                                                        {downloadingId === log.id ? "Generating..." : "Download"}
                                                     </button>
                                                     <div
                                                         title={log.isResent ? "Already resent. You can resend only once" : "You can resend only once"}
