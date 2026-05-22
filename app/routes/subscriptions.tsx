@@ -191,7 +191,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           <h2 style="margin:0 0 4px;font-size:22px;font-weight:700;">My Subscriptions</h2>
           <p style="margin:0;color:#666;font-size:14px;">Manage your active donation subscriptions</p>
         </div>
-        <a href="{{ routes.account_url }}" style="font-size:13px;color:#555;text-decoration:none;">← Back to Account</a>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <a href="/apps/pos-donation/receipts?logged_in_customer_id=${customerId}" style="font-size:13px;color:#6C4A79;text-decoration:none;padding:6px 12px;border:1px solid #e5e5e5;border-radius:6px;font-weight:500;">Donation Receipts</a>
+          <a href="{{ routes.account_url }}" style="font-size:13px;color:#555;text-decoration:none;">← Back to Account</a>
+        </div>
       </div>
   `;
 
