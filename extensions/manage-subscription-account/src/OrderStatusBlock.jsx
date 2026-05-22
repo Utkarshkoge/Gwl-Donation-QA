@@ -81,13 +81,13 @@ function Extension({ api }) {
   }
 
   return (
-    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+    <>
       <s-button href={subscriptionsUrl} external={true}>
         Manage Subscription
       </s-button>
       <s-button href={receiptsUrl} external={true}>
         Donation Receipts
       </s-button>
-    </div>
+    </>
   );
 }
