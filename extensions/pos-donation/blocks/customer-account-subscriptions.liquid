@@ -12,6 +12,13 @@
     >
       <span class="sm-btn-text">{{ block.settings.button_text | default: "Manage Subscription" }}</span>
     </a>
+    <a
+      href="/apps/pos-donation/receipts?logged_in_customer_id={{ customer.id }}"
+      class="sm-primary-btn"
+      style="background-color: {{ block.settings.button_color }}; color: {{ block.settings.text_color }};"
+    >
+      <span class="sm-btn-text">Donation Receipts</span>
+    </a>
   {% endif %}
 </div>
 
@@ -20,6 +27,8 @@
     padding: 24px 0;
     display: flex;
     justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
   }
   .sm-primary-btn {
     display: inline-flex;
