@@ -74,13 +74,20 @@ function Extension({ api }) {
   if (error || !myshopifyDomain) return null;
 
   let subscriptionsUrl = `https://${myshopifyDomain}/apps/pos-donation/subscriptions`;
+  let receiptsUrl = `https://${myshopifyDomain}/apps/pos-donation/receipts`;
   if (customerId) {
     subscriptionsUrl += `?logged_in_customer_id=${customerId}`;
+    receiptsUrl += `?logged_in_customer_id=${customerId}`;
   }
 
   return (
-    <s-button href={subscriptionsUrl} external={true}>
-      Manage Subscription
-    </s-button>
+    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      <s-button href={subscriptionsUrl} external={true}>
+        Manage Subscription
+      </s-button>
+      <s-button href={receiptsUrl} external={true}>
+        Donation Receipts
+      </s-button>
+    </div>
   );
 }
