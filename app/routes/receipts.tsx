@@ -174,27 +174,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             </div>
         `;
     } else {
-        const totalDonations = donations.filter(d => d.status === "active").length;
-        const totalAmount = donations
-            .filter(d => d.status === "active")
-            .reduce((sum, d) => sum + d.donationAmount, 0);
-
-        html += `
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px;">
-                <div style="background:#f8f0fc;border-radius:10px;padding:16px;text-align:center;">
-                    <div style="font-size:24px;font-weight:700;color:#6C4A79;">${totalDonations}</div>
-                    <div style="font-size:12px;color:#6D7175;margin-top:4px;text-transform:uppercase;letter-spacing:.5px;">Total Donations</div>
-                </div>
-                <div style="background:#f8f0fc;border-radius:10px;padding:16px;text-align:center;">
-                    <div style="font-size:24px;font-weight:700;color:#6C4A79;">$${totalAmount.toFixed(2)}</div>
-                    <div style="font-size:12px;color:#6D7175;margin-top:4px;text-transform:uppercase;letter-spacing:.5px;">Total Contributed</div>
-                </div>
-                <div style="background:#f8f0fc;border-radius:10px;padding:16px;text-align:center;">
-                    <div style="font-size:24px;font-weight:700;color:#6C4A79;">${donations.length}</div>
-                    <div style="font-size:12px;color:#6D7175;margin-top:4px;text-transform:uppercase;letter-spacing:.5px;">Receipts Available</div>
-                </div>
-            </div>
-        `;
 
         for (const donation of donations) {
             const receiptNumber = `RCP-${donation.id.substring(0, 8).toUpperCase()}`;
