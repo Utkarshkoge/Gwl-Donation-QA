@@ -301,7 +301,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // Apply Tagging and Logic (Consolidated Section)
         let isApplicable = false;
         let isPosDonationSource = false;
-        let frequency: "one_time" | "monthly" | "weekly" = "one_time";
+        let frequency: "one_time" | "monthly" | "weekly" | "daily" = "one_time";
         let samplePriceCents = 0;
 
         if (isRecurring && recurringSellingPlanId) {
@@ -310,6 +310,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 const spId = recurringSellingPlanId.split('/').pop() || "";
                 if (config.monthlyPlanId?.includes(spId)) frequency = "monthly";
                 else if (config.weeklyPlanId?.includes(spId)) frequency = "weekly";
+                // ── ONE-DAY SUBSCRIPTION HOOK (removable) ──
+                else if (config.dailyPlanId?.includes(spId)) frequency = "daily";
+                // ── END ONE-DAY SUBSCRIPTION HOOK ──
             }
         }
 
@@ -455,7 +458,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
 
             if (currentCustomerEmail !== "No Email provided" && checkFeatureAccess(plan, "canSendReceiptEmail")) {
-                const freqLabel = frequency === "weekly" ? "Weekly" : frequency === "monthly" ? "Monthly" : "One-time";
+                const freqLabel = frequency === "daily" ? "Daily" : frequency === "weekly" ? "Weekly" : frequency === "monthly" ? "Monthly" : "One-time";
 
                 const shippingAddr = order.shipping_address
                     ? `${order.shipping_address.name}\n${order.shipping_address.address1}${order.shipping_address.address2 ? ` ${order.shipping_address.address2}` : ""}\n${order.shipping_address.city}, ${order.shipping_address.province_code || ""} ${order.shipping_address.zip}\n${order.shipping_address.country}`
@@ -478,7 +481,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
                 let nextBillingDate = "";
                 const today = new Date();
-                if (frequency === "weekly") {
+                // ── ONE-DAY SUBSCRIPTION HOOK (removable) ──
+                if (frequency === "daily") {
+                    today.setDate(today.getDate() + 1);
+                    nextBillingDate = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                // ── END ONE-DAY SUBSCRIPTION HOOK ──
+                } else if (frequency === "weekly") {
                     today.setDate(today.getDate() + 7);
                     nextBillingDate = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                 } else if (frequency === "monthly") {
@@ -690,8 +698,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     if (hasDirectDonationProduct || hasCampaignRecurring) {
                         // For global widget items AND campaign products ordered with a selling plan
                         const isSub = frequency !== "one_time";
-                        const orderTag = isSub ? (frequency === "monthly" ? "recurring_donation_monthly" : "recurring_donation_weekly") : "preset_donation";
-                        const customerTag = isSub ? (frequency === "monthly" ? "recurring_donor_monthly" : "recurring_donor_weekly") : "preset_donor";
+                        // ── ONE-DAY SUBSCRIPTION HOOK (removable): added "daily" tag ──
+                        const orderTag = isSub ? (frequency === "monthly" ? "recurring_donation_monthly" : frequency === "daily" ? "recurring_donation_daily" : "recurring_donation_weekly") : "preset_donation";
+                        const customerTag = isSub ? (frequency === "monthly" ? "recurring_donor_monthly" : frequency === "daily" ? "recurring_donor_daily" : "recurring_donor_weekly") : "preset_donor";
+                        // ── END ONE-DAY SUBSCRIPTION HOOK ──
 
                         if (!existingTags.includes(orderTag)) existingTags.push(orderTag);
 
@@ -735,13 +745,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     
                     const activeTypes: string[] = [];
                     if (hasCampaignRecurring && frequency !== "one_time") {
-                        activeTypes.push(frequency === "monthly" ? "Monthly" : "Weekly");
+                        // ── ONE-DAY SUBSCRIPTION HOOK (removable): added "Daily" ──
+                        activeTypes.push(frequency === "monthly" ? "Monthly" : frequency === "daily" ? "Daily" : "Weekly");
+                        // ── END ONE-DAY SUBSCRIPTION HOOK ──
                     }
                     if (hasCampaignDonation || (hasDirectDonationProduct && frequency === "one_time")) {
                         activeTypes.push("Preset");
                     }
                     if (hasDirectDonationProduct && frequency !== "one_time") {
-                        activeTypes.push(frequency === "monthly" ? "Monthly" : "Weekly");
+                        // ── ONE-DAY SUBSCRIPTION HOOK (removable): added "Daily" ──
+                        activeTypes.push(frequency === "monthly" ? "Monthly" : frequency === "daily" ? "Daily" : "Weekly");
+                        // ── END ONE-DAY SUBSCRIPTION HOOK ──
                     }
                     if (hasRoundUpDonation) {
                         activeTypes.push("Round-Up");

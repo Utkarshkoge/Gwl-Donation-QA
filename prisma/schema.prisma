@@ -150,6 +150,7 @@ model RecurringDonationConfig {
   sellingPlanGroupId String?
   monthlyPlanId      String?
   weeklyPlanId       String?
+  dailyPlanId        String?   // ── ONE-DAY SUBSCRIPTION (removable) ──
   isActive           Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -329,4 +330,14 @@ model BillingAttemptLog {
   @@index([shop, subscriptionContractId])
   @@index([shop, status])
   @@index([createdAt])
+}
+
+// ── ONE-DAY SUBSCRIPTION CONFIG (removable) ──
+model OneDayDonationConfig {
+  id          String   @id @default(uuid())
+  shop        String   @unique
+  isActive    Boolean  @default(false)
+  dailyPlanId String?  // Shopify SellingPlan GID for the daily plan
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

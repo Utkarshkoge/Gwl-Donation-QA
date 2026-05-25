@@ -17,6 +17,7 @@ export interface NormalizedDonation {
 }
 
 export function mapFrequencyLabel(freq: string | null | undefined): string {
+    if (freq === "daily") return "Daily";
     if (freq === "monthly") return "Monthly";
     if (freq === "weekly") return "Weekly";
     return "One-time";

@@ -157,6 +157,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             "Preset": "background:#e6fff1;color:#008060;",
             "Recurring (Monthly)": "background:#f4ebf8;color:#6C4A79;",
             "Recurring (Weekly)": "background:#f4ebf8;color:#6C4A79;",
+            "Recurring (Daily)": "background:#f4ebf8;color:#6C4A79;",
             "One-time": "background:#e6fff1;color:#008060;",
         };
         return map[type] ?? "background:#f3f4f6;color:#374151;";

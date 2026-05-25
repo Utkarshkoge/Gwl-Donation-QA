@@ -28,6 +28,7 @@ export default function App() {
                     <Link to="/app/preset-donation">Donation Preferences</Link>
                     <Link to="/app/roundup">Round Up Donation</Link>
                     <Link to="/app/pos-donation">Portion of Sale</Link>
+                    <Link to="/app/oneday-subscription">Daily Donation</Link>
                     <Link to="/app/email-settings">Email Settings</Link>
 
                     <Link to="/app/donation-activity">Donation Activity</Link>
