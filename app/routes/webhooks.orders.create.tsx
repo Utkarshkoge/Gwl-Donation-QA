@@ -490,7 +490,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     today.setDate(today.getDate() + 7);
                     nextBillingDate = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                 } else if (frequency === "monthly") {
-                    today.setDate(today.getDate() + 30);
+                    today.setMonth(today.getMonth() + 1);
                     nextBillingDate = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                 }
 
