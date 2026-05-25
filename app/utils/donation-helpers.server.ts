@@ -13,6 +13,7 @@ export interface NormalizedDonation {
     frequency: string;
     campaignName: string;
     createdAt: Date;
+    subscriptionContractId?: string;
 }
 
 export function mapFrequencyLabel(freq: string | null | undefined): string {
@@ -29,7 +30,7 @@ export function mapDonationType(source: string, frequency?: string | null): stri
         }
         case "roundup": return "Round Up";
         case "preset": return "Preset";
-        case "pos": default: return "POS";
+        case "pos": default: return "Portion of Sale";
     }
 }
 
@@ -119,6 +120,7 @@ export function normalizeDonationRecord(
         frequency: source === "recurring" ? mapFrequencyLabel(record.frequency) : "One-time",
         campaignName: "",
         createdAt: record.createdAt,
+        subscriptionContractId: source === "recurring" ? record.subscriptionContractId || undefined : undefined,
     };
 }
 

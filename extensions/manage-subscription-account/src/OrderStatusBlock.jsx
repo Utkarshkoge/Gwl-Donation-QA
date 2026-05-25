@@ -81,13 +81,13 @@ function Extension({ api }) {
   }
 
   return (
-    <>
+    <s-stack direction="inline" gap="base">
       <s-button href={subscriptionsUrl} external={true}>
         Manage Subscription
       </s-button>
       <s-button href={receiptsUrl} external={true}>
         Donation Receipts
       </s-button>
-    </>
+    </s-stack>
   );
 }

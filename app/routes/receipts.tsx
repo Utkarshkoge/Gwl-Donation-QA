@@ -73,12 +73,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     const customerGid = `gid://shopify/Customer/${customerId}`;
     let orderIds: string[] = [];
+    let contracts: any[] = [];
     let orderMap: Map<string, { name: string; email: string }> = new Map();
 
     try {
         const response = await admin.graphql(
             `#graphql
-            query getCustomerOrders($customerId: ID!) {
+            query getCustomerOrdersAndSubscriptions($customerId: ID!) {
                 customer(id: $customerId) {
                     displayName
                     orders(first: 50, sortKey: CREATED_AT, reverse: true) {
@@ -87,6 +88,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                                 id
                                 name
                                 email
+                            }
+                        }
+                    }
+                    subscriptionContracts(first: 50) {
+                        edges {
+                            node {
+                                id
+                                status
+                                lines(first: 10) {
+                                    edges {
+                                        node {
+                                            title
+                                            quantity
+                                        }
+                                    }
+                                }
+                                originOrder {
+                                    id
+                                    name
+                                }
                             }
                         }
                     }
@@ -110,6 +131,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
 
         const orders = json?.data?.customer?.orders?.edges?.map((e: any) => e.node) ?? [];
+        contracts = json?.data?.customer?.subscriptionContracts?.edges?.map((e: any) => e.node) ?? [];
 
         for (const order of orders) {
             const numericId = normalizeOrderIdToNumeric(order.id);
@@ -130,7 +152,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     const badgeStyle = (type: string) => {
         const map: Record<string, string> = {
-            "POS": "background:#e4f0f6;color:#03080e;",
+            "Portion of Sale": "background:#e4f0f6;color:#03080e;",
             "Round Up": "background:#fff4e5;color:#965b00;",
             "Preset": "background:#e6fff1;color:#008060;",
             "Recurring (Monthly)": "background:#f4ebf8;color:#6C4A79;",
@@ -174,16 +196,49 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             </div>
         `;
     } else {
+        const normalizeId = (id?: string) => {
+            if (!id) return "";
+            return id.replace("gid://shopify/SubscriptionContract/", "").trim();
+        };
 
         for (const donation of donations) {
             const receiptNumber = `RCP-${donation.id.substring(0, 8).toUpperCase()}`;
+
+            let displayTitle = donation.campaignName || donation.donationType;
+            if (donation.donationSource === "recurring") {
+                const matchingContract = contracts.find((c: any) => {
+                    if (donation.subscriptionContractId) {
+                        return normalizeId(c.id) === normalizeId(donation.subscriptionContractId);
+                    }
+                    const contractOrderId = c.originOrder?.id ? c.originOrder.id.replace("gid://shopify/Order/", "").trim() : "";
+                    const donationOrderId = donation.orderId ? donation.orderId.replace("gid://shopify/Order/", "").trim() : "";
+                    if (contractOrderId && donationOrderId && contractOrderId === donationOrderId) {
+                        return true;
+                    }
+                    const contractOrderName = c.originOrder?.name || "";
+                    if (contractOrderName && donation.orderNumber && contractOrderName === donation.orderNumber) {
+                        return true;
+                    }
+                    return false;
+                });
+
+                if (matchingContract) {
+                    const lines = matchingContract.lines?.edges?.map((e: any) => e.node) ?? [];
+                    const productTitles = lines
+                        .map((l: any) => `${l.quantity > 1 ? l.quantity + "× " : ""}${l.title}`)
+                        .join(", ");
+                    if (productTitles) {
+                        displayTitle = productTitles;
+                    }
+                }
+            }
 
             html += `
                 <div style="border:1px solid #e5e5e5;border-radius:12px;padding:20px;margin-bottom:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
                         <div>
                             <div style="font-size:15px;font-weight:600;margin-bottom:2px;">
-                                ${donation.campaignName || donation.donationType}
+                                ${displayTitle}
                             </div>
                             <div style="font-size:12px;color:#888;">
                                 Order ${donation.orderNumber} • ${fmtDate(donation.createdAt)}
@@ -194,9 +249,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                             <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;${badgeStyle(donation.donationType)}">
                                 ${donation.donationType}
                             </span>
+                            ${donation.donationSource === "recurring" ? `
                             <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;text-transform:capitalize;${statusBadge(donation.status)}">
                                 ${donation.status}
                             </span>
+                            ` : ""}
                         </div>
                     </div>
 
