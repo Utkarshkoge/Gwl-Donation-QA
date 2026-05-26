@@ -132,21 +132,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                     const numericId = contractId.split("/").pop();
 
                     try {
-                        // Check if we already triggered a billing attempt for this contract recently
-                        // (within last 30 minutes) to avoid duplicate charges
+                        // Determine dedup window based on subscription frequency
+                        // This prevents billing the same contract multiple times when
+                        // Shopify hasn't advanced nextBillingDate yet or multiple past cycles exist
+                        const line = contract.lines?.edges?.[0]?.node;
+                        const sellingPlanName = (line?.sellingPlanName || "").toLowerCase();
+                        let dedupHours = 20; // Default: ~1 day safety margin
+                        if (sellingPlanName.includes("daily") || sellingPlanName.includes("day")) {
+                            dedupHours = 20; // ~20 hours for daily
+                        } else if (sellingPlanName.includes("week")) {
+                            dedupHours = 6 * 24; // 6 days for weekly
+                        } else if (sellingPlanName.includes("month")) {
+                            dedupHours = 25 * 24; // 25 days for monthly
+                        }
+
+                        // Check if we already successfully triggered a billing attempt recently
                         const recentAttempt = await db.billingAttemptLog.findFirst({
                             where: {
                                 shop,
                                 subscriptionContractId: contractId,
                                 source: "cron_billing",
+                                status: { in: ["success", "pending"] },
                                 createdAt: {
-                                    gte: new Date(now.getTime() - 30 * 60 * 1000), // 30 mins ago
+                                    gte: new Date(now.getTime() - dedupHours * 60 * 60 * 1000),
                                 },
                             },
                         });
 
                         if (recentAttempt) {
-                            console.log(`[CronBilling] ${shop}: Skipping contract #${numericId} — already attempted within 30 mins (${recentAttempt.id}).`);
+                            console.log(`[CronBilling] ${shop}: Skipping contract #${numericId} — already billed within ${dedupHours}h (${recentAttempt.status} at ${recentAttempt.createdAt.toISOString()}).`);
                             results.skipped++;
                             continue;
                         }

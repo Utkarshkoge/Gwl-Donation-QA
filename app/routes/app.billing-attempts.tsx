@@ -45,8 +45,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ]);
 
     return {
-        attempts: attempts.map(a => ({ ...a, createdAt: a.createdAt.toISOString() })),
-        recoveryLogs: recoveryLogs.map(r => ({
+        attempts: attempts.map((a: any) => ({ ...a, createdAt: a.createdAt.toISOString() })),
+        recoveryLogs: recoveryLogs.map((r: any) => ({
             ...r,
             createdAt: r.createdAt.toISOString(),
             updatedAt: r.updatedAt.toISOString(),
@@ -119,11 +119,6 @@ export default function BillingAttemptsPage() {
         };
         const c = colors[status] || { bg: "#eee", fg: "#333" };
         return `background:${c.bg};color:${c.fg};padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;text-transform:capitalize;display:inline-block`;
-    };
-
-    const sourceBadge = (source: string) => {
-        const labels: Record<string, string> = { webhook: "⚡ Webhook", cron_retry: "🔄 Cron Retry", manual: "👤 Manual" };
-        return labels[source] || source;
     };
 
     return (
@@ -222,7 +217,6 @@ export default function BillingAttemptsPage() {
                                             <th>Customer</th>
                                             <th>Contract</th>
                                             <th>Amount</th>
-                                            <th>Source</th>
                                             <th>Retry #</th>
                                             <th>Status</th>
                                             <th>Error</th>
@@ -245,7 +239,6 @@ export default function BillingAttemptsPage() {
                                                     {a.currency} {a.amount.toFixed(2)}
                                                     {a.donationName && <span className="ba-donation-name">{a.donationName}</span>}
                                                 </td>
-                                                <td><span className="ba-source">{sourceBadge(a.source)}</span></td>
                                                 <td className="ba-cell-center">{a.retryNumber > 0 ? `#${a.retryNumber}` : "Initial"}</td>
                                                 <td><span style={Object.fromEntries(statusBadge(a.status).split(";").map(s => { const [k, v] = s.split(":"); return [k.trim(), v?.trim()]; }))}>{a.status}</span></td>
                                                 <td className="ba-cell-error">
@@ -358,8 +351,8 @@ export default function BillingAttemptsPage() {
 
                 .ba-timeline-banner { background: ${THEME}0a; border: 1px solid ${THEME}25; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 14px; color: ${THEME}; }
 
-                .ba-table-wrap { background: #fff; border: 1px solid #e1e3e5; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-                .ba-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+                .ba-table-wrap { background: #fff; border: 1px solid #e1e3e5; border-radius: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+                .ba-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1000px; }
                 .ba-table thead { background: #f6f6f7; }
                 .ba-table th { padding: 12px 14px; text-align: left; font-weight: 600; color: #6d7175; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e1e3e5; white-space: nowrap; }
                 .ba-table td { padding: 12px 14px; border-bottom: 1px solid #f0f1f2; vertical-align: top; }
@@ -381,7 +374,6 @@ export default function BillingAttemptsPage() {
                 .ba-cell-time { white-space: nowrap; font-size: 12px; color: #6d7175; }
                 .ba-donation-name { display: block; font-size: 11px; font-weight: 400; color: #6d7175; margin-top: 2px; }
 
-                .ba-source { font-size: 12px; white-space: nowrap; }
                 .ba-error-code { display: inline-block; background: #fde8e8; color: #c53030; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-family: monospace; margin-right: 4px; }
                 .ba-error-msg { font-size: 12px; color: #6d7175; display: block; margin-top: 2px; }
 
@@ -402,7 +394,6 @@ export default function BillingAttemptsPage() {
 
                 @media (max-width: 900px) {
                     .ba-cards { grid-template-columns: repeat(2, 1fr); }
-                    .ba-table-wrap { overflow-x: auto; }
                 }
                 @media (max-width: 500px) {
                     .ba-cards { grid-template-columns: 1fr; }
