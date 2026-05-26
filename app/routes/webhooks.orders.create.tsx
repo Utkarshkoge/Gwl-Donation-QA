@@ -536,6 +536,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 emailStatus = currentCustomerEmail !== "No Email provided" ? "skipped" : "failed";
             }
 
+            // ── Guard: Identify subscription renewal orders (from cron billing or Shopify) ──
+            const isSubscriptionRenewal = order.source_name === "subscription_contract" || isRecurring;
+
             try {
                 let loggedAny = false;
 
@@ -567,7 +570,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 }
 
                 // 2. One-time Global Preset Donation
-                if (hasDirectDonationProduct && frequency === "one_time") {
+                // ── Guard: Skip this block for subscription renewal orders ──
+                // Subscription renewals (triggered by cron billing or Shopify) use the same
+                // donation product but should NOT be treated as one-time preset donations.
+                if (hasDirectDonationProduct && frequency === "one_time" && !isSubscriptionRenewal) {
                     try {
                         let campaign = await db.campaign.findFirst({
                             where: {
@@ -724,7 +730,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         if (!existingTags.includes(baseTag)) existingTags.push(baseTag);
                     }
 
-                    if (hasCampaignDonation) {
+                    // ── Guard: Only add preset_donation tag for actual one-time preset donations,
+                    //    NOT for subscription renewal orders ──
+                    if (hasCampaignDonation && !isSubscriptionRenewal) {
                         if (!existingTags.includes("preset_donation")) existingTags.push("preset_donation");
 
                         const customerId = (order as any).customer_gql_id || (order.customer?.id ? `gid://shopify/Customer/${order.customer.id}` : null);
@@ -749,7 +757,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         activeTypes.push(frequency === "monthly" ? "Monthly" : frequency === "daily" ? "Daily" : "Weekly");
                         // ── END ONE-DAY SUBSCRIPTION HOOK ──
                     }
-                    if (hasCampaignDonation || (hasDirectDonationProduct && frequency === "one_time")) {
+                    if ((hasCampaignDonation || (hasDirectDonationProduct && frequency === "one_time")) && !isSubscriptionRenewal) {
                         activeTypes.push("Preset");
                     }
                     if (hasDirectDonationProduct && frequency !== "one_time") {
