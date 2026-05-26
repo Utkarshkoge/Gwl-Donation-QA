@@ -183,7 +183,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
                         // Extract contract details for logging
                         const customer = contract.customer;
-                        const line = contract.lines?.edges?.[0]?.node;
+                        // Reuse line variable declared at start of try block
                         const amount = parseFloat(line?.currentPrice?.amount || "0");
                         const currency = contract.currencyCode || "USD";
                         const donationName = line?.title || "Recurring Donation";
