@@ -23,7 +23,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         console.log(`[Webhook] Auth SUCCESS. Topic: ${topic}, Shop: ${shop}`);
         console.log(`[Webhook] Payload ID: ${payload.id}, Name: ${payload.name}`);
 
-        if (topic !== "ORDERS_CREATE") {
+        if (topic !== "ORDERS_CREATE" && topic !== "ORDERS_PAID") {
             console.warn(`[Webhook] Unexpected topic: ${topic}`);
             return new Response(null, { status: 400 });
         }
@@ -34,6 +34,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
 
         const order = payload as any;
+
+        // ── COD Guard: Skip orders with pending payment (e.g. Cash on Delivery) ──
+        // These will be processed later when the orders/paid webhook fires
+        // after the merchant collects payment.
+        // Note: For card/online payments, financial_status is "paid" at creation time,
+        // so they pass through immediately.
+        if (topic === "ORDERS_CREATE" && order.financial_status === "pending") {
+            console.log(`[Webhook] Order ${order.name} has pending payment (likely COD). Skipping donation processing until payment is collected via orders/paid webhook.`);
+            return new Response("OK - pending payment, awaiting orders/paid", { status: 200 });
+        }
         const orderId = payload.id?.toString();
         const orderIdStr = order.admin_graphql_api_id || `gid://shopify/Order/${order.id}`;
 
