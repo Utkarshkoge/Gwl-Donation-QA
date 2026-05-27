@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -12,9 +12,9 @@ model Session {
   shop                String
   state               String
   isOnline            Boolean   @default(false)
-  scope               String?
+  scope               String?   @db.Text
   expires             DateTime?
-  accessToken         String
+  accessToken         String    @db.Text
   userId              BigInt?
   firstName           String?
   lastName            String?
@@ -23,7 +23,7 @@ model Session {
   locale              String?
   collaborator        Boolean?  @default(false)
   emailVerified       Boolean?  @default(false)
-  refreshToken        String?
+  refreshToken        String?   @db.Text
   refreshTokenExpires DateTime?
 }
 
@@ -111,23 +111,33 @@ model EmailSettings {
   shop                               String   @unique
   contactEmail                       String   @default("donations@yourstore.com")
   ccEmail                            String?  @default("")
+
   receiptSubject                     String   @default("Thank you for your donation")
-  receiptBody                        String   @default("We've received your generous donation of <strong>{{currency}}{{amount}}</strong> along with your order {{orderNumber}}.")
+  receiptBody                        String?  @db.Text
+
   refundSubject                      String   @default("Donation Refund Confirmation")
-  refundBody                         String   @default("We're writing to confirm that the donation of <strong>{{currency}}{{amount}}</strong> associated with order {{orderNumber}} has been refunded.")
+  refundBody                         String?  @db.Text
+
   cancelSubject                      String   @default("Donation Cancellation")
-  cancelBody                         String   @default("The donation of <strong>{{currency}}{{amount}}</strong> associated with your cancelled order {{orderNumber}} has also been marked as cancelled.")
+  cancelBody                         String?  @db.Text
+
   pauseSubject                       String   @default("Subscription Paused")
-  pauseBody                          String   @default("Your subscription for <strong>{{donation_name}}</strong> has been paused.")
+  pauseBody                          String?  @db.Text
+
   resumeSubject                      String   @default("Subscription Resumed")
-  resumeBody                         String   @default("Your subscription for <strong>{{donation_name}}</strong> has been resumed.")
+  resumeBody                         String?  @db.Text
+
   logoUrl                            String?
+
   createdAt                          DateTime @default(now())
   updatedAt                          DateTime @updatedAt
-  reminderBody                       String   @default("This is a friendly reminder that your next donation of <strong>{{currency}}{{amount}}</strong> for <strong>{{donation_name}}</strong> is scheduled for {{nextBillingDate}}.")
+
+  reminderBody                       String?  @db.Text
   reminderSubject                    String   @default("Upcoming Donation Reminder: {{amount}}")
+
   notifyMerchantOnSubscriptionChange Boolean  @default(false)
-  recoveryBody                       String   @default("We're writing to let you know that we were unable to process your recurring donation of <strong>{{currency}}{{amount}}</strong> for <strong>{{donation_name}}</strong>. We will automatically retry the payment in a few days.")
+
+  recoveryBody                       String?  @db.Text
   recoverySubject                    String   @default("Action Required: Your donation payment failed")
 }
 
