@@ -205,15 +205,35 @@ const faqs = [
     },
     {
         question: "What is Payment Recovery and how does it work?",
-        answer: "Payment Recovery is an automated system that retries failed recurring donation charges. Instead of immediately cancelling a subscription when a payment fails, the system will retry the charge at specified intervals (e.g., every 3 days) to maximize revenue and reduce churn."
+        answer: "Payment Recovery retries failed charges at set intervals. If all retries fail, it triggers your configured fallback (e.g., Pause, Cancel, or Skip). Failed attempts are logged under Billing Attempts."
     },
     {
-        question: "How many times will the system retry a failed payment?",
-        answer: "You can configure the number of retry attempts (from 1 to 10) in the Payment Recovery settings. If all attempts fail, the system will perform your chosen fallback action (Pause, Cancel, or Skip)."
+        question: "Can the donation block show when the cart is empty?",
+        answer: "Yes. Enable the 'Show on Empty Cart' toggle in the dashboard to keep the block visible. If disabled, it only displays when items are added to the cart."
     },
     {
-        question: "Will customers be notified when a payment fails?",
-        answer: "Yes, if you enable 'Send payment failure notifications', customers will receive an automated email when a charge fails. You can customize the content of this email in the Email Configuration section."
+        question: "Where can I see my active pricing plan?",
+        answer: "Your active pricing plan (Free, Basic, Pro) and billing status are displayed directly on the app's home page dashboard."
+    },
+    {
+        question: "Are customers and merchants notified when subscription status changes?",
+        answer: "Yes. Confirmation emails are sent to both the customer and the merchant whenever a subscription is Paused, Resumed, or Cancelled."
+    },
+    {
+        question: "How are donations handled for Cash on Delivery (COD) orders?",
+        answer: "Donations are held in 'Pending' status and not processed until the order is marked as Paid in your Shopify Admin. Once paid, the donation is logged, tags are added, and the receipt email is sent."
+    },
+    {
+        question: "Can customers manage their subscriptions from emails?",
+        answer: "Yes, all receipt and reminder emails contain a direct 'Manage Subscription' link redirecting to the customer portal."
+    },
+    {
+        question: "Do customers get reminded before upcoming subscription renewals?",
+        answer: "Yes, billing reminder emails showing the upcoming charge date and amount are sent 3 days before renewal, including a management link."
+    },
+    {
+        question: "What is Daily Donation (One-Day Subscription) and how does it work?",
+        answer: "Daily Donation bills customers every day. Once enabled from the Daily Donation tab, a 'Daily Donation' option appears alongside Weekly and Monthly options in the storefront frequency dropdown."
     }
 ];
 
