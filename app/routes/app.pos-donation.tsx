@@ -87,6 +87,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         logs,
         plan: subscription?.plan ?? "basic",
         blockConfig: blockConfig ?? { productBlockEnabled: true, cartBlockEnabled: true },
+        shop,
     };
 };
 
@@ -167,7 +168,7 @@ export default function PosDonation() {
     const resendFetcher = useFetcher();
     const shopify = useAppBridge();
 
-    const { settings: savedSettings, currency: currencyCode, logs, analytics, plan, blockConfig } = loaderData;
+    const { settings: savedSettings, currency: currencyCode, logs, analytics, plan, blockConfig, shop } = loaderData;
 
     // Build a static generic formatter for previews
     const moneyFormatter = new Intl.NumberFormat(undefined, {
@@ -593,7 +594,7 @@ export default function PosDonation() {
                     id: "pos-product",
                     title: "Product Page Setup",
                     description: "To add the donation section to your product page, click the button below to insert the app block.",
-                    themeEditorUrl: `https://admin.shopify.com/store/${shopify.config?.shop?.replace(".myshopify.com", "") || ""}/themes/current/editor?template=product`,
+                    themeEditorUrl: `https://admin.shopify.com/store/${shop.replace(".myshopify.com", "")}/themes/current/editor?template=product`,
                     buttonLabel: "Donation App Block on Product Page",
                     previewSvg: PRODUCT_PREVIEW_SVG,
                     instructions: [
@@ -606,7 +607,7 @@ export default function PosDonation() {
                     id: "pos-cart",
                     title: "Cart Page Setup",
                     description: "To add the donation section to your cart page, click the button below to insert the app block.",
-                    themeEditorUrl: `https://admin.shopify.com/store/${shopify.config?.shop?.replace(".myshopify.com", "") || ""}/themes/current/editor?template=cart`,
+                    themeEditorUrl: `https://admin.shopify.com/store/${shop.replace(".myshopify.com", "")}/themes/current/editor?template=cart`,
                     buttonLabel: "Donation App Block on Cart Page",
                     previewSvg: CART_PREVIEW_SVG,
                     instructions: [
