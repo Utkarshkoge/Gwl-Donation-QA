@@ -39,9 +39,101 @@ export async function setupSellingPlans(admin: any, shop: string, productId: str
 
     const variantIds: string[] = product.variants.edges.map((e: any) => e.node.id);
 
+    // Fetch if daily donation is active
+    const oneDayConfig = await db.oneDayDonationConfig.findUnique({
+        where: { shop },
+    });
+    const isDailyActive = oneDayConfig?.isActive ?? false;
+
     if (!sellingPlanGroupId) {
         console.log(`[Recurring] No selling plan group found for ${shop}, creating one...`);
-        // 3. Create the Selling Plan Group with Monthly + Weekly plans
+
+        // Build plans list
+        const plansToCreate: any[] = [
+            {
+                name: "Monthly Donation",
+                options: ["Monthly"],
+                position: 1,
+                category: "SUBSCRIPTION",
+                billingPolicy: {
+                    recurring: {
+                        interval: "MONTH",
+                        intervalCount: 1,
+                    },
+                },
+                deliveryPolicy: {
+                    recurring: {
+                        interval: "MONTH",
+                        intervalCount: 1,
+                    },
+                },
+                pricingPolicies: [
+                    {
+                        fixed: {
+                            adjustmentType: "PERCENTAGE",
+                            adjustmentValue: { percentage: 0 },
+                        },
+                    },
+                ],
+            },
+            {
+                name: "Weekly Donation",
+                options: ["Weekly"],
+                position: 2,
+                category: "SUBSCRIPTION",
+                billingPolicy: {
+                    recurring: {
+                        interval: "WEEK",
+                        intervalCount: 1,
+                    },
+                },
+                deliveryPolicy: {
+                    recurring: {
+                        interval: "WEEK",
+                        intervalCount: 1,
+                    },
+                },
+                pricingPolicies: [
+                    {
+                        fixed: {
+                            adjustmentType: "PERCENTAGE",
+                            adjustmentValue: { percentage: 0 },
+                        },
+                    },
+                ],
+            },
+        ];
+
+        if (isDailyActive) {
+            plansToCreate.push({
+                name: "Daily Donation",
+                options: ["Daily"],
+                position: 0,
+                category: "SUBSCRIPTION",
+                billingPolicy: {
+                    recurring: {
+                        interval: "DAY",
+                        intervalCount: 1,
+                    },
+                },
+                deliveryPolicy: {
+                    recurring: {
+                        interval: "DAY",
+                        intervalCount: 1,
+                    },
+                },
+                pricingPolicies: [
+                    {
+                        fixed: {
+                            adjustmentType: "PERCENTAGE",
+                            adjustmentValue: { percentage: 0 },
+                        },
+                    },
+                ],
+            });
+        }
+
+        // 3. Create the Selling Plan Group
         const createGroupResponse = await admin.graphql(
             `#graphql
             mutation sellingPlanGroupCreate($input: SellingPlanGroupInput!) {
@@ -71,60 +163,7 @@ export async function setupSellingPlans(admin: any, shop: string, productId: str
                         merchantCode: "recurring-donations",
                         options: ["Frequency"],
                         position: 1,
-                        sellingPlansToCreate: [
-                            {
-                                name: "Monthly Donation",
-                                options: ["Monthly"],
-                                position: 1,
-                                category: "SUBSCRIPTION",
-                                billingPolicy: {
-                                    recurring: {
-                                        interval: "MONTH",
-                                        intervalCount: 1,
-                                    },
-                                },
-                                deliveryPolicy: {
-                                    recurring: {
-                                        interval: "MONTH",
-                                        intervalCount: 1,
-                                    },
-                                },
-                                pricingPolicies: [
-                                    {
-                                        fixed: {
-                                            adjustmentType: "PERCENTAGE",
-                                            adjustmentValue: { percentage: 0 },
-                                        },
-                                    },
-                                ],
-                            },
-                            {
-                                name: "Weekly Donation",
-                                options: ["Weekly"],
-                                position: 2,
-                                category: "SUBSCRIPTION",
-                                billingPolicy: {
-                                    recurring: {
-                                        interval: "WEEK",
-                                        intervalCount: 1,
-                                    },
-                                },
-                                deliveryPolicy: {
-                                    recurring: {
-                                        interval: "WEEK",
-                                        intervalCount: 1,
-                                    },
-                                },
-                                pricingPolicies: [
-                                    {
-                                        fixed: {
-                                            adjustmentType: "PERCENTAGE",
-                                            adjustmentValue: { percentage: 0 },
-                                        },
-                                    },
-                                ],
-                            },
-                        ],
+                        sellingPlansToCreate: plansToCreate,
                     },
                 },
             }
@@ -142,7 +181,9 @@ export async function setupSellingPlans(admin: any, shop: string, productId: str
 
         monthlyPlanId = plans.find(p => p.name.toLowerCase().includes("monthly"))?.id || null;
         weeklyPlanId = plans.find(p => p.name.toLowerCase().includes("weekly"))?.id || null;
+        dailyPlanId = plans.find(p => p.name.toLowerCase().includes("daily"))?.id || null;
     }
+
 
     // 4. Attach selling plan group to the product
     const attachResponse = await admin.graphql(
@@ -168,7 +209,7 @@ export async function setupSellingPlans(admin: any, shop: string, productId: str
         console.warn(`[Recurring] Group ${sellingPlanGroupId} does not exist in Shopify. Clearing from DB and retrying...`);
         await db.recurringDonationConfig.update({
             where: { shop },
-            data: { sellingPlanGroupId: null, monthlyPlanId: null, weeklyPlanId: null }
+            data: { sellingPlanGroupId: null, monthlyPlanId: null, weeklyPlanId: null, dailyPlanId: null }
         });
         return setupSellingPlans(admin, shop, productId, retryCount + 1);
     }
@@ -208,6 +249,7 @@ export async function setupSellingPlans(admin: any, shop: string, productId: str
             sellingPlanGroupId,
             monthlyPlanId,
             weeklyPlanId,
+            dailyPlanId,
             isActive: true,
             productGid: PRODUCT_GID,
             productId: PRODUCT_GID.split("/").pop(),
@@ -219,9 +261,27 @@ export async function setupSellingPlans(admin: any, shop: string, productId: str
             sellingPlanGroupId: sellingPlanGroupId!,
             monthlyPlanId,
             weeklyPlanId,
+            dailyPlanId,
             isActive: true,
         },
     });
+
+    // If Daily Donation plan exists, update the oneDayDonationConfig table to match
+    if (dailyPlanId) {
+        await db.oneDayDonationConfig.upsert({
+            where: { shop },
+            update: {
+                dailyPlanId,
+                sellingPlanGroupId,
+            },
+            create: {
+                shop,
+                dailyPlanId,
+                sellingPlanGroupId,
+                isActive: true,
+            },
+        });
+    }
 
     console.log(`[Recurring] Setup complete for ${shop}. Group: ${sellingPlanGroupId}`);
 
@@ -229,6 +289,7 @@ export async function setupSellingPlans(admin: any, shop: string, productId: str
         sellingPlanGroupId,
         monthlyPlanId,
         weeklyPlanId,
+        dailyPlanId,
         variantCount: variantIds.length
     };
 }

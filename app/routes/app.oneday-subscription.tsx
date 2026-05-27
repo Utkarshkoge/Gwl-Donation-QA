@@ -15,7 +15,6 @@ import {
     Text,
     BlockStack,
     InlineStack,
-    Box,
     Badge,
     Banner,
     Button,
@@ -116,25 +115,6 @@ export default function OneDaySubscriptionPage() {
             backAction={{ content: "Home", url: "/app" }}
         >
             <Layout>
-                {!hasRecurringSetup && (
-                    <Layout.Section>
-                        <Banner
-                            title="Recurring Donations Required"
-                            tone="warning"
-                        >
-                            <p>
-                                You must set up Recurring Donations (Weekly/Monthly) first before enabling
-                                the Daily Donation option. The daily plan is added to the same selling plan
-                                group used by your existing recurring subscriptions.
-                            </p>
-                            <Box paddingBlockStart="200">
-                                <Button url="/app/pos-donation">
-                                    Set Up Recurring Donations
-                                </Button>
-                            </Box>
-                        </Banner>
-                    </Layout.Section>
-                )}
 
                 {fetcher.data && !isSubmitting && (
                     <Layout.Section>
@@ -241,7 +221,7 @@ export default function OneDaySubscriptionPage() {
                                     <Button
                                         variant="primary"
                                         loading={isSubmitting}
-                                        disabled={isSubmitting || !hasRecurringSetup}
+                                        disabled={isSubmitting}
                                         onClick={() =>
                                             fetcher.submit(
                                                 { _action: "enable" },

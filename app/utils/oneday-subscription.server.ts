@@ -33,22 +33,23 @@ export async function setupOneDaySellingPlan(
         where: { shop },
     });
 
-    if (!recurringConfig) {
-        throw new Error(
-            "Recurring Donation must be set up first. Please configure Weekly/Monthly donations before enabling Daily."
-        );
-    }
-
-    if (!recurringConfig.sellingPlanGroupId) {
-        throw new Error(
-            "No Selling Plan Group found. Please set up recurring donations first to create the selling plan group."
-        );
-    }
-
-    if (!recurringConfig.productGid) {
-        throw new Error(
-            "No donation product configured. Please set up recurring donations first."
-        );
+    if (!recurringConfig || !recurringConfig.sellingPlanGroupId) {
+        console.log(`[OneDaySubscription] Recurring setup not complete. Activating Daily configuration in database only.`);
+        // Upsert OneDayDonationConfig
+        await db.oneDayDonationConfig.upsert({
+            where: { shop },
+            update: {
+                isActive: true,
+            },
+            create: {
+                shop,
+                isActive: true,
+            },
+        });
+        return {
+            dailyPlanId: "",
+            sellingPlanGroupId: "",
+        };
     }
 
     // 2. Check if daily plan already exists in the group
