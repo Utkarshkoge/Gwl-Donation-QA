@@ -43,11 +43,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         });
     }
 
-    const redirectUrl = new URL("/app/pricing", url.origin);
-    redirectUrl.searchParams.set("shop", shop);
-    if (host) redirectUrl.searchParams.set("host", host);
-
-    return redirect(redirectUrl.toString());
+    return redirect(`/app/pricing?shop=${encodeURIComponent(shop)}${host ? `&host=${encodeURIComponent(host)}` : ""}`);
 };
 
 export default function BillingRedirect() {

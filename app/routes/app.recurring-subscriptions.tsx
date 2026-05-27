@@ -368,7 +368,7 @@ export default function RecurringSubscriptionsPage() {
                         ) : (
                             <EmptyState
                                 heading="No recurring donations found"
-                                action={{ content: "Setup Selling Plans", url: "/app/recurring-donation" }}
+                                action={{ content: "Setup Selling Plans", onAction: () => navigate("/app/preset-donation") }}
                                 image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                             >
                                 <p>When customers start recurring donations, they will appear here.</p>

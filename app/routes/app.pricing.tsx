@@ -55,8 +55,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const price = parseFloat(planDetail.price.replace("$", ""));
         const url = new URL(request.url);
         const shopifyHost = url.searchParams.get("host");
-        const host = process.env.SHOPIFY_APP_URL || url.origin;
-        const returnUrl = `${host}/app/billing?plan=${plan}&shop=${shop}${shopifyHost ? `&host=${encodeURIComponent(shopifyHost)}` : ""}`;
+        const appUrl = (process.env.SHOPIFY_APP_URL || url.origin).replace(/\/$/, "");
+        const returnUrl = `${appUrl}/app/billing?plan=${plan}&shop=${shop}${shopifyHost ? `&host=${encodeURIComponent(shopifyHost)}` : ""}`;
 
         const response = await admin.graphql(
             `#graphql
