@@ -73,8 +73,8 @@ function Extension({ api }) {
   // If there was an error, render nothing silently instead of crashing
   if (error || !myshopifyDomain) return null;
 
-  let subscriptionsUrl = `https://${myshopifyDomain}/apps/pos-donation/subscriptions`;
-  let receiptsUrl = `https://${myshopifyDomain}/apps/pos-donation/receipts`;
+  let subscriptionsUrl = `https://${myshopifyDomain}/apps/pos-donation-1/subscriptions`;
+  let receiptsUrl = `https://${myshopifyDomain}/apps/pos-donation-1/receipts`;
   if (customerId) {
     subscriptionsUrl += `?logged_in_customer_id=${customerId}`;
     receiptsUrl += `?logged_in_customer_id=${customerId}`;

@@ -6,14 +6,14 @@
 <div id="manage-subscriptions-widget" class="sm-standalone-wrap">
   {% if customer %}
     <a
-      href="/apps/pos-donation/subscriptions?logged_in_customer_id={{ customer.id }}"
+      href="/apps/pos-donation-1/subscriptions?logged_in_customer_id={{ customer.id }}"
       class="sm-primary-btn"
       style="background-color: {{ block.settings.button_color }}; color: {{ block.settings.text_color }};"
     >
       <span class="sm-btn-text">{{ block.settings.button_text | default: "Manage Subscription" }}</span>
     </a>
     <a
-      href="/apps/pos-donation/receipts?logged_in_customer_id={{ customer.id }}"
+      href="/apps/pos-donation-1/receipts?logged_in_customer_id={{ customer.id }}"
       class="sm-primary-btn"
       style="background-color: {{ block.settings.button_color }}; color: {{ block.settings.text_color }};"
     >

@@ -130,7 +130,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                             frequency: frequency,
                             nextBillingDate: nextBillingDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
                             donationName: line?.title || "Recurring Donation",
-                            manageUrl: `https://${shop}/apps/pos-donation/subscriptions`
+                            manageUrl: `https://${shop}/apps/pos-donation-1/subscriptions`
                         });
 
                         if (emailRes.success) {

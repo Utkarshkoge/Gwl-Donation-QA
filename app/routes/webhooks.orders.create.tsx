@@ -535,7 +535,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     shippingAddress: shippingAddr,
                     billingAddress: billingAddr,
                     productTitle: resolvedProductTitle,
-                    manageUrl: frequency !== "one_time" ? `https://${shop}/apps/pos-donation/subscriptions` : undefined,
+                    manageUrl: frequency !== "one_time" ? `https://${shop}/apps/pos-donation-1/subscriptions` : undefined,
                     nextBillingDate: nextBillingDate,
                     paymentMethod: paymentMethod,
                     productImage: (order as any).donation_product_image,

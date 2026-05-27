@@ -87,7 +87,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       return liquid(`
         <div style="max-width:700px;margin:40px auto;text-align:center;">
           <h2>Subscription not found</h2>
-          <a href="/apps/pos-donation/subscriptions?logged_in_customer_id=${customerId}">← Back</a>
+          <a href="/apps/pos-donation-1/subscriptions?logged_in_customer_id=${customerId}">← Back</a>
         </div>
       `);
     }
@@ -111,7 +111,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const html = `
       <div style="max-width:700px;margin:40px auto;font-family:sans-serif;padding:0 16px;">
         <div style="margin-bottom:20px;">
-          <a href="/apps/pos-donation/subscriptions?logged_in_customer_id=${customerId}" style="color:#555;text-decoration:none;">← Back to Subscriptions</a>
+          <a href="/apps/pos-donation-1/subscriptions?logged_in_customer_id=${customerId}" style="color:#555;text-decoration:none;">← Back to Subscriptions</a>
         </div>
 
         ${successMsg ? `
@@ -236,7 +236,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       <div style="max-width:700px;margin:40px auto;text-align:center;">
         <h2>Error loading subscription</h2>
         <p style="color:#666;">${err instanceof Error ? err.message : 'Unknown error'}</p>
-        <a href="/apps/pos-donation/subscriptions?logged_in_customer_id=${customerId}">← Back to Subscriptions</a>
+        <a href="/apps/pos-donation-1/subscriptions?logged_in_customer_id=${customerId}">← Back to Subscriptions</a>
       </div>
     `);
   }
@@ -268,7 +268,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return new Response(null, {
       status: 302,
       headers: {
-        Location: `/apps/pos-donation/subscriptions/${subscriptionId}?logged_in_customer_id=${customerId}&success=${encodeURIComponent(result.message)}`,
+        Location: `/apps/pos-donation-1/subscriptions/${subscriptionId}?logged_in_customer_id=${customerId}&success=${encodeURIComponent(result.message)}`,
       },
     });
   } catch (err) {
@@ -278,7 +278,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return new Response(null, {
       status: 302,
       headers: {
-        Location: `/apps/pos-donation/subscriptions/${subscriptionId}?logged_in_customer_id=${customerId}&error=${encodeURIComponent(errorMessage)}`,
+        Location: `/apps/pos-donation-1/subscriptions/${subscriptionId}?logged_in_customer_id=${customerId}&error=${encodeURIComponent(errorMessage)}`,
       },
     });
   }

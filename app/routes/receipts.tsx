@@ -180,7 +180,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                     <p style="margin:0;color:#666;font-size:14px;">View and download receipts for all your donations</p>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <a href="/apps/pos-donation/subscriptions?logged_in_customer_id=${customerId}" style="font-size:13px;color:#6C4A79;text-decoration:none;padding:6px 12px;border:1px solid #e5e5e5;border-radius:6px;font-weight:500;">My Subscriptions</a>
+                    <a href="/apps/pos-donation-1/subscriptions?logged_in_customer_id=${customerId}" style="font-size:13px;color:#6C4A79;text-decoration:none;padding:6px 12px;border:1px solid #e5e5e5;border-radius:6px;font-weight:500;">My Subscriptions</a>
                     <a href="{{ routes.account_url }}" style="font-size:13px;color:#555;text-decoration:none;">← Account</a>
                 </div>
             </div>
@@ -263,7 +263,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                             <div style="font-size:11px;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Amount</div>
                             <div style="font-size:18px;font-weight:700;color:#6C4A79;">$${donation.donationAmount.toFixed(2)}</div>
                         </div>
-                        <a href="/apps/pos-donation/api/customer/receipt-download?id=${donation.id}&source=${donation.donationSource}&logged_in_customer_id=${customerId}"
+                        <a href="/apps/pos-donation-1/api/customer/receipt-download?id=${donation.id}&source=${donation.donationSource}&logged_in_customer_id=${customerId}"
                            style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:#6C4A79;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;"
                            onmouseover="this.style.background='#5a3a66'"
                            onmouseout="this.style.background='#6C4A79'"

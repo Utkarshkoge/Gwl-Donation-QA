@@ -1,7 +1,7 @@
 /**
  * api.pos-donation.custom-cart.tsx
  *
- * App proxy route: POST /apps/pos-donation/api/custom-donation-cart
+ * App proxy route: POST /apps/pos-donation-1/api/custom-donation-cart
  *
  * Handles custom-amount donations by creating a Shopify Draft Order with an
  * explicit price override on the donation variant. Returns a checkoutUrl so

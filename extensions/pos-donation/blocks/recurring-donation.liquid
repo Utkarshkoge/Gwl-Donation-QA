@@ -303,7 +303,7 @@
         if (loadingUi) loadingUi.style.display = 'flex';
 
         try {
-          var response = await fetch(`/apps/pos-donation/api/customer/subscription-status?customer_id=${encodeURIComponent(customerId)}`);
+          var response = await fetch(`/apps/pos-donation-1/api/customer/subscription-status?customer_id=${encodeURIComponent(customerId)}`);
           var data = await response.json();
 
           if (loadingUi) loadingUi.style.display = 'none';
@@ -340,7 +340,7 @@
           this.disabled = true;
           this.textContent = "Cancelling...";
           try {
-            var response = await fetch('/apps/pos-donation/api/customer/subscription-action', {
+            var response = await fetch('/apps/pos-donation-1/api/customer/subscription-action', {
               method: 'POST',
               body: JSON.stringify({ action: 'CANCEL', contractId: currentContractId }),
               headers: { 'Content-Type': 'application/json' }
@@ -369,7 +369,7 @@
           this.disabled = true;
           this.textContent = "Switching...";
           try {
-            var response = await fetch('/apps/pos-donation/api/customer/subscription-action', {
+            var response = await fetch('/apps/pos-donation-1/api/customer/subscription-action', {
               method: 'POST',
               body: JSON.stringify({ action: 'SWITCH', contractId: currentContractId, newFrequency: newFreq }),
               headers: { 'Content-Type': 'application/json' }

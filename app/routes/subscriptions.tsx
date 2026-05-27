@@ -192,7 +192,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           <p style="margin:0;color:#666;font-size:14px;">Manage your active donation subscriptions</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <a href="/apps/pos-donation/receipts?logged_in_customer_id=${customerId}" style="font-size:13px;color:#6C4A79;text-decoration:none;padding:6px 12px;border:1px solid #e5e5e5;border-radius:6px;font-weight:500;">Donation Receipts</a>
+          <a href="/apps/pos-donation-1/receipts?logged_in_customer_id=${customerId}" style="font-size:13px;color:#6C4A79;text-decoration:none;padding:6px 12px;border:1px solid #e5e5e5;border-radius:6px;font-weight:500;">Donation Receipts</a>
           <a href="{{ routes.account_url }}" style="font-size:13px;color:#555;text-decoration:none;">← Back to Account</a>
         </div>
       </div>
@@ -250,7 +250,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           </div>
           
           <div style="margin-top:8px;padding-top:12px;border-top:1px solid #f0f0f0;">
-            <a href="/apps/pos-donation/subscriptions/${subscriptionNumericId}?logged_in_customer_id=${customerId}" 
+            <a href="/apps/pos-donation-1/subscriptions/${subscriptionNumericId}?logged_in_customer_id=${customerId}" 
                style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#f3f4f6;color:#374151;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500;">
               View Details → 
             </a>

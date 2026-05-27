@@ -23,7 +23,7 @@
   }
 
   function resolveApiUrl(container) {
-    return "/apps/pos-donation/api/campaigns";
+    return "/apps/pos-donation-1/api/campaigns";
   }
 
   function setFeedback(el, msg, isError) {
