@@ -46,16 +46,16 @@ model Campaign {
   id                 String     @id @default(uuid())
   shop               String
   name               String
-  description        String
+  description        String     @db.Text
   enabled            Boolean    @default(true)
   category           String     @default("Uncategorized")
-  imageUrl           String?
+  imageUrl           String?    @db.Text
   displayStyle       String     @default("tabs")
-  donationAmounts    String     @default("[]")
+  donationAmounts    String     @db.Text
   allowOtherAmount   Boolean    @default(true)
   otherAmountTitle   String     @default("Other")
   shopifyProductId   String?
-  shopifyVariantIds  String     @default("[]")
+  shopifyVariantIds  String     @db.Text
   isRecurringEnabled Boolean    @default(false)
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
@@ -210,13 +210,13 @@ model RoundUpDonationSettings {
   shop                      String   @unique
   enabled                   Boolean  @default(false)
   campaignTitle             String   @default("Donation for better society")
-  description               String   @default("Your donation contributes to a better society.")
+  description               String   @db.Text
   showImage                 Boolean  @default(true)
   checkboxLabel             String   @default("Yes, I want to donate (amount)")
   rounding                  String   @default("nearest1")
   donationOrderTag          String   @default("roundUpDonation")
   customAmount              String?
-  imageUrl                  String?
+  imageUrl                  String?  @db.Text
   additionalDonationEnabled Boolean  @default(false)
   additionalDonationTitle   String   @default("Add an extra donation (optional)")
   placeholderText           String   @default("Enter amount")
