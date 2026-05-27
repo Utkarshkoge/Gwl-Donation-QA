@@ -435,6 +435,9 @@
         if (recurringConfig.weeklyPlanId) {
           html += '<option value="' + recurringConfig.weeklyPlanId + '">Weekly</option>';
         }
+        if (recurringConfig.dailyPlanId) {
+          html += '<option value="' + recurringConfig.dailyPlanId + '">Daily</option>';
+        }
         html += '</select></div></div>';
       }
 

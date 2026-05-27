@@ -11,6 +11,7 @@ export async function setupSellingPlans(admin: any, shop: string, productId: str
     let sellingPlanGroupId = existingConfig?.sellingPlanGroupId;
     let monthlyPlanId = existingConfig?.monthlyPlanId;
     let weeklyPlanId = existingConfig?.weeklyPlanId;
+    let dailyPlanId = existingConfig?.dailyPlanId;
 
     // 2. Fetch all variants for the donation product
     const productResponse = await admin.graphql(
@@ -272,12 +273,10 @@ export async function setupSellingPlans(admin: any, shop: string, productId: str
             where: { shop },
             update: {
                 dailyPlanId,
-                sellingPlanGroupId,
             },
             create: {
                 shop,
                 dailyPlanId,
-                sellingPlanGroupId,
                 isActive: true,
             },
         });

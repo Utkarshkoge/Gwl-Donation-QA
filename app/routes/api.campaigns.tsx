@@ -96,6 +96,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         recurringConfig: recurringConfig ? {
           monthlyPlanId: recurringConfig.monthlyPlanId,
           weeklyPlanId: recurringConfig.weeklyPlanId,
+          dailyPlanId: recurringConfig.dailyPlanId,
         } : null,
         campaigns: campaigns.map((c: any) => ({
           ...c,
