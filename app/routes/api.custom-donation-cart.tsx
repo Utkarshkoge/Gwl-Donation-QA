@@ -81,6 +81,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return jsonResp({ success: false, error: "Invalid customAmount" }, 400);
     }
 
+    // ── 3.5 Check global app settings ─────────────────────────────────────────
+    try {
+        const appSettings = await prisma.appSettings.findUnique({
+            where: { shop },
+        });
+        if (appSettings && !appSettings.enabled) {
+            return jsonResp({ success: false, error: "App is currently disabled" }, 400);
+        }
+    } catch (err) {
+        console.error("[custom-cart] App settings check error:", err);
+    }
+
     // ── 4. Look up campaign ────────────────────────────────────────────────────
     let campaign: any;
     try {

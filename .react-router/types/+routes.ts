@@ -74,10 +74,16 @@ type Pages = {
   "/api/block-config": {
     params: {};
   };
+  "/api/cron/billing": {
+    params: {};
+  };
   "/api/pos-donation": {
     params: {};
   };
   "/api/pos-donation/settings": {
+    params: {};
+  };
+  "/api/test-failure": {
     params: {};
   };
   "/api/campaigns": {
@@ -119,6 +125,9 @@ type Pages = {
     params: {};
   };
   "/app/preset-donation/add": {
+    params: {};
+  };
+  "/app/oneday-subscription": {
     params: {};
   };
   "/app/subscription-detail": {
@@ -168,7 +177,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/webhooks/subscription_billing_attempts/failure" | "/webhooks/subscription_billing_attempts/success" | "/webhooks/subscription_contracts/create" | "/webhooks/subscription_contracts/update" | "/webhooks/app_subscriptions/update" | "/api/customer/subscription-action" | "/api/customer/subscription-status" | "/api/customer/receipt-download" | "/apps/pos-donation/settings" | "/webhooks/app/scopes_update" | "/api/cron/payment-recovery" | "/api/resend-donation-email" | "/webhooks/orders/cancelled" | "/api/custom-donation-cart" | "/webhooks/app/uninstalled" | "/webhooks/refunds/create" | "/webhooks/orders/create" | "/api/download-receipt" | "/api/cron/reminders" | "/api/block-config" | "/api/pos-donation" | "/api/pos-donation/settings" | "/api/campaigns" | "/subscriptions" | "/subscriptions/:id" | "/auth/login" | "/receipts" | "/auth/*" | "/app" | "/app/preset-donation/delete/:id" | "/app/preset-donation/edit/:id" | "/app/recurring-subscriptions" | "/app/preset-donation/add" | "/app/subscription-detail" | "/app/donation-activity" | "/app/billing-attempts" | "/app/payment-recovery" | "/app/perset-donation" | "/app/preset-donation" | "/app/email-settings" | "/app/track-donation" | "/app/pos-donation" | "/app/diagnostics" | "/app/billing" | "/app/pricing" | "/app/roundup" | "/app/help";
+    page: "/" | "/webhooks/subscription_billing_attempts/failure" | "/webhooks/subscription_billing_attempts/success" | "/webhooks/subscription_contracts/create" | "/webhooks/subscription_contracts/update" | "/webhooks/app_subscriptions/update" | "/api/customer/subscription-action" | "/api/customer/subscription-status" | "/api/customer/receipt-download" | "/apps/pos-donation/settings" | "/webhooks/app/scopes_update" | "/api/cron/payment-recovery" | "/api/resend-donation-email" | "/webhooks/orders/cancelled" | "/api/custom-donation-cart" | "/webhooks/app/uninstalled" | "/webhooks/refunds/create" | "/webhooks/orders/create" | "/api/download-receipt" | "/api/cron/reminders" | "/api/block-config" | "/api/cron/billing" | "/api/pos-donation" | "/api/pos-donation/settings" | "/api/test-failure" | "/api/campaigns" | "/subscriptions" | "/subscriptions/:id" | "/auth/login" | "/receipts" | "/auth/*" | "/app" | "/app/preset-donation/delete/:id" | "/app/preset-donation/edit/:id" | "/app/recurring-subscriptions" | "/app/preset-donation/add" | "/app/oneday-subscription" | "/app/subscription-detail" | "/app/donation-activity" | "/app/billing-attempts" | "/app/payment-recovery" | "/app/perset-donation" | "/app/preset-donation" | "/app/email-settings" | "/app/track-donation" | "/app/pos-donation" | "/app/diagnostics" | "/app/billing" | "/app/pricing" | "/app/roundup" | "/app/help";
   };
   "routes/webhooks.subscription_billing_attempts.failure.tsx": {
     id: "routes/webhooks.subscription_billing_attempts.failure";
@@ -250,6 +259,10 @@ type RouteFiles = {
     id: "routes/api.block-config";
     page: "/api/block-config";
   };
+  "routes/api.cron.billing.tsx": {
+    id: "routes/api.cron.billing";
+    page: "/api/cron/billing";
+  };
   "routes/api.pos-donation.tsx": {
     id: "routes/api.pos-donation";
     page: "/api/pos-donation" | "/api/pos-donation/settings";
@@ -257,6 +270,10 @@ type RouteFiles = {
   "routes/api.pos-donation.settings.tsx": {
     id: "routes/api.pos-donation.settings";
     page: "/api/pos-donation/settings";
+  };
+  "routes/api.test-failure.tsx": {
+    id: "routes/api.test-failure";
+    page: "/api/test-failure";
   };
   "routes/api.campaigns.tsx": {
     id: "routes/api.campaigns";
@@ -288,7 +305,7 @@ type RouteFiles = {
   };
   "routes/app.tsx": {
     id: "routes/app";
-    page: "/app" | "/app/preset-donation/delete/:id" | "/app/preset-donation/edit/:id" | "/app/recurring-subscriptions" | "/app/preset-donation/add" | "/app/subscription-detail" | "/app/donation-activity" | "/app/billing-attempts" | "/app/payment-recovery" | "/app/perset-donation" | "/app/preset-donation" | "/app/email-settings" | "/app/track-donation" | "/app/pos-donation" | "/app/diagnostics" | "/app/billing" | "/app/pricing" | "/app/roundup" | "/app/help";
+    page: "/app" | "/app/preset-donation/delete/:id" | "/app/preset-donation/edit/:id" | "/app/recurring-subscriptions" | "/app/preset-donation/add" | "/app/oneday-subscription" | "/app/subscription-detail" | "/app/donation-activity" | "/app/billing-attempts" | "/app/payment-recovery" | "/app/perset-donation" | "/app/preset-donation" | "/app/email-settings" | "/app/track-donation" | "/app/pos-donation" | "/app/diagnostics" | "/app/billing" | "/app/pricing" | "/app/roundup" | "/app/help";
   };
   "routes/app.preset-donation_.delete.$id.tsx": {
     id: "routes/app.preset-donation_.delete.$id";
@@ -305,6 +322,10 @@ type RouteFiles = {
   "routes/app.preset-donation_.add.tsx": {
     id: "routes/app.preset-donation_.add";
     page: "/app/preset-donation/add";
+  };
+  "routes/app.oneday-subscription.tsx": {
+    id: "routes/app.oneday-subscription";
+    page: "/app/oneday-subscription";
   };
   "routes/app.subscription-detail.tsx": {
     id: "routes/app.subscription-detail";
@@ -390,8 +411,10 @@ type RouteModules = {
   "routes/api.download-receipt": typeof import("./app/routes/api.download-receipt.tsx");
   "routes/api.cron.reminders": typeof import("./app/routes/api.cron.reminders.tsx");
   "routes/api.block-config": typeof import("./app/routes/api.block-config.tsx");
+  "routes/api.cron.billing": typeof import("./app/routes/api.cron.billing.tsx");
   "routes/api.pos-donation": typeof import("./app/routes/api.pos-donation.tsx");
   "routes/api.pos-donation.settings": typeof import("./app/routes/api.pos-donation.settings.tsx");
+  "routes/api.test-failure": typeof import("./app/routes/api.test-failure.tsx");
   "routes/api.campaigns": typeof import("./app/routes/api.campaigns.tsx");
   "routes/subscriptions": typeof import("./app/routes/subscriptions.tsx");
   "routes/subscriptions.$id": typeof import("./app/routes/subscriptions.$id.tsx");
@@ -404,6 +427,7 @@ type RouteModules = {
   "routes/app.preset-donation_.edit.$id": typeof import("./app/routes/app.preset-donation_.edit.$id.tsx");
   "routes/app.recurring-subscriptions": typeof import("./app/routes/app.recurring-subscriptions.tsx");
   "routes/app.preset-donation_.add": typeof import("./app/routes/app.preset-donation_.add.tsx");
+  "routes/app.oneday-subscription": typeof import("./app/routes/app.oneday-subscription.tsx");
   "routes/app.subscription-detail": typeof import("./app/routes/app.subscription-detail.tsx");
   "routes/app.donation-activity": typeof import("./app/routes/app.donation-activity.tsx");
   "routes/app.billing-attempts": typeof import("./app/routes/app.billing-attempts.tsx");

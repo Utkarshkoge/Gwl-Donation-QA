@@ -44,6 +44,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             console.log(`[Webhook] Order ${order.name} has pending payment (likely COD). Skipping donation processing until payment is collected via orders/paid webhook.`);
             return new Response("OK - pending payment, awaiting orders/paid", { status: 200 });
         }
+
+        const appSettings = await db.appSettings.findUnique({ where: { shop } });
+        const isAppEnabled = appSettings?.enabled ?? true;
+        if (!isAppEnabled) {
+            console.log(`[Webhook] App is globally disabled for shop ${shop}. Skipping donation processing for Order ${order.name}.`);
+            return new Response("OK - app globally disabled", { status: 200 });
+        }
         const orderId = payload.id?.toString();
         const orderIdStr = order.admin_graphql_api_id || `gid://shopify/Order/${order.id}`;
 

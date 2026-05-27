@@ -40,6 +40,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   shop = shop || url.searchParams.get("shop") || "";
 
   try {
+    const appSettings = await prisma.appSettings.findUnique({
+      where: { shop },
+    });
+
+    if (appSettings && !appSettings.enabled) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          disabled: true,
+          campaigns: [],
+          recurringConfig: null,
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=60",
+          },
+        }
+      );
+    }
 
     const campaigns = await prisma.campaign.findMany({
       where: {

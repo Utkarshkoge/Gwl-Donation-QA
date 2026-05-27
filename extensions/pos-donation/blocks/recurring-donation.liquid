@@ -1,3 +1,4 @@
+{% assign global_enabled = app.metafields.common.enabled.value %}
 {% assign is_donation = false %}
 {% if product.tags contains 'Donation' or product.tags contains 'donation' or product.type contains 'Donation' or product.type contains 'donation' %}
   {% assign is_donation = true %}
@@ -12,7 +13,7 @@
   {% endfor %}
 {% endunless %}
 
-{% if is_donation and product.selling_plan_groups.size > 0 %}
+{% if is_donation and product.selling_plan_groups.size > 0 and global_enabled != false %}
   <div id="donation-widget-container" class="rc-premium-outer">
     
     <!-- Loading State -->
