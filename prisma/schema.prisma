@@ -34,7 +34,7 @@ model PosDonationSettings {
   donationType    String   @default("percentage")
   donationValue   Float    @default(5.0)
   minimumValue    Float    @default(0)
-  donationMessage String   @default("{donationAmount} of {totalOrderValue} will be donated to charity")
+  donationMessage String   @db.Text
   tooltipMessage  String   @default("A portion of your purchase supports charity")
   orderTag        String   @default("galaxy_pos_donation")
   donationBasis   String   @default("order")
