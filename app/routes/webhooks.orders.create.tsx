@@ -592,23 +592,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 // donation product but should NOT be treated as one-time preset donations.
                 if (hasDirectDonationProduct && frequency === "one_time" && !isSubscriptionRenewal) {
                     try {
-                        let campaign = await db.campaign.findFirst({
-                            where: {
-                                shop: shop,
-                                OR: [
-                                    { name: { contains: "General", mode: "insensitive" } },
-                                    { name: { contains: "One-time", mode: "insensitive" } },
-                                    { name: { contains: "Donation", mode: "insensitive" } }
-                                ]
+                        const donationItem = (order.line_items || []).find((li: any) => String(li.product_id) === String(DONATION_PRODUCT_ID));
+                        let campaignNameFromProp = "";
+                        if (donationItem && donationItem.properties) {
+                            const prop = donationItem.properties.find((p: any) => p.name === "Donation Campaign");
+                            if (prop) {
+                                campaignNameFromProp = prop.value;
                             }
-                        });
+                        }
+
+                        let campaign = null;
+                        if (campaignNameFromProp) {
+                            campaign = await db.campaign.findFirst({
+                                where: {
+                                    shop: shop,
+                                    name: campaignNameFromProp
+                                }
+                            });
+                        }
+
+                        if (!campaign) {
+                            campaign = await db.campaign.findFirst({
+                                where: {
+                                    shop: shop,
+                                    OR: [
+                                        { name: { contains: "General" } },
+                                        { name: { contains: "One-time" } },
+                                        { name: { contains: "Donation" } }
+                                    ]
+                                }
+                            });
+                        }
 
                         if (!campaign) {
                             campaign = await db.campaign.findFirst({ where: { shop } });
                         }
 
                         if (campaign) {
-                            const donationItem = (order.line_items || []).find((li: any) => String(li.product_id) === String(DONATION_PRODUCT_ID));
                             const variantIdStr = donationItem?.variant_id?.toString() || "unknown";
 
                             await db.donation.upsert({

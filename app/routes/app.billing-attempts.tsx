@@ -17,9 +17,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (statusFilter !== "all") where.status = statusFilter;
     if (search) {
         where.OR = [
-            { customerEmail: { contains: search, mode: "insensitive" } },
-            { customerName: { contains: search, mode: "insensitive" } },
-            { orderNumber: { contains: search, mode: "insensitive" } },
+            { customerEmail: { contains: search } },
+            { customerName: { contains: search } },
+            { orderNumber: { contains: search } },
         ];
     }
     if (contractFilter) where.subscriptionContractId = contractFilter;
