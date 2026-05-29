@@ -49,7 +49,7 @@ model Campaign {
   description        String     @db.Text
   enabled            Boolean    @default(true)
   category           String     @default("Uncategorized")
-  imageUrl           String?    @db.Text
+  imageUrl           String?    @db.LongText
   displayStyle       String     @default("tabs")
   donationAmounts    String     @db.Text
   allowOtherAmount   Boolean    @default(true)
@@ -127,7 +127,7 @@ model EmailSettings {
   resumeSubject                      String   @default("Subscription Resumed")
   resumeBody                         String?  @db.Text
 
-  logoUrl                            String?
+  logoUrl                            String?   @db.LongText
 
   createdAt                          DateTime @default(now())
   updatedAt                          DateTime @updatedAt
@@ -216,7 +216,7 @@ model RoundUpDonationSettings {
   rounding                  String   @default("nearest1")
   donationOrderTag          String   @default("roundUpDonation")
   customAmount              String?
-  imageUrl                  String?  @db.Text
+  imageUrl                   String?   @db.LongText
   additionalDonationEnabled Boolean  @default(false)
   additionalDonationTitle   String   @default("Add an extra donation (optional)")
   placeholderText           String   @default("Enter amount")
