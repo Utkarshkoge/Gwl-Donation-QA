@@ -166,6 +166,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         else if (actionType === "RESUME") emailType = "resume";
         else if (actionType === "SWITCH") emailType = "resume"; // "Resumed" or "Updated" works
 
+        const recLog = await db.recurringDonationLog.findFirst({
+          where: {
+            OR: [
+              { subscriptionContractId: contractId },
+              { orderId: orderId || undefined },
+              { orderNumber: orderNumber || undefined }
+            ]
+          }
+        });
+        const frequencyVal = recLog?.frequency === "weekly" ? "Weekly" : recLog?.frequency === "daily" ? "Daily" : "Monthly";
+
         await sendDonationReceipt({
           email: contract.customer.email,
           name: `${contract.customer.firstName || ""} ${contract.customer.lastName || ""}`.trim(),
@@ -173,6 +184,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           orderNumber: contract.originOrder?.name || "",
           type: emailType,
           shop: shop || "Your Store",
+          frequency: frequencyVal,
           nextBillingDate: contract.nextBillingDate ? new Date(contract.nextBillingDate).toLocaleDateString() : "N/A",
           productTitle: contract.lines.edges[0]?.node?.title || "Donation"
         });

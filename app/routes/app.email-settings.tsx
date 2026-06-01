@@ -192,10 +192,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shop = session.shop;
     const formData = await request.formData();
 
+    let logoUrl = (formData.get("logoUrl") as string) || "";
+    if (logoUrl.startsWith("data:image/")) {
+        try {
+            const matches = logoUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+            if (matches) {
+                const ext = matches[1] === "svg+xml" ? "svg" : matches[1];
+                const base64Data = matches[2];
+                const buffer = Buffer.from(base64Data, "base64");
+
+                const fs = await import("fs/promises");
+                const path = await import("path");
+
+                // Ensure public/uploads exists
+                const uploadsDir = path.join(process.cwd(), "public", "uploads");
+                await fs.mkdir(uploadsDir, { recursive: true });
+
+                const filename = `logo-${shop.replace(/[^a-zA-Z0-9]/g, "-")}.${ext}`;
+                const filepath = path.join(uploadsDir, filename);
+                await fs.writeFile(filepath, buffer);
+
+                const requestUrl = new URL(request.url);
+                logoUrl = `${requestUrl.origin}/uploads/${filename}`;
+            }
+        } catch (err) {
+            console.error("Failed to save uploaded logo to disk:", err);
+        }
+    }
+
     const data = {
         contactEmail: (formData.get("contactEmail") as string) || DEFAULT_SETTINGS.contactEmail,
         ccEmail: (formData.get("ccEmail") as string) || "",
-        logoUrl: (formData.get("logoUrl") as string) || "",
+        logoUrl: logoUrl,
         receiptSubject: (formData.get("receiptSubject") as string) || DEFAULT_SETTINGS.receiptSubject,
         receiptBody: (formData.get("receiptBody") as string) || DEFAULT_SETTINGS.receiptBody,
         refundSubject: (formData.get("refundSubject") as string) || DEFAULT_SETTINGS.refundSubject,

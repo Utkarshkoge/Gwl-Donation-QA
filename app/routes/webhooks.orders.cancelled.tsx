@@ -42,7 +42,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             await db.recurringDonationLog.update({ where: { orderId: orderIdStr }, data: { status: "cancelled" } });
             donationFound = true;
             cancelAmount = recLog.donationAmount;
-            cancelFreq = recLog.frequency === "weekly" ? "Weekly" : "Monthly";
+            cancelFreq = recLog.frequency === "weekly" ? "Weekly" : recLog.frequency === "daily" ? "Daily" : "Monthly";
             cancelOrderNumber = recLog.orderNumber || cancelOrderNumber;
         }
 

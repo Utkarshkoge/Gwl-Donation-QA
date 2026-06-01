@@ -48,7 +48,7 @@
           </p>
           <div class="rd-input-composition">
             <div class="rd-input-wrapper">
-              <span class="rd-currency-symbol">₹</span>
+              <span class="rd-currency-symbol">{{ cart.currency.symbol }}</span>
               <input 
                 type="number"
                 id="extra-donation-input"
@@ -369,10 +369,13 @@
     const mode = settings?.rounding || "nearest1";
     const customAmount = settings?.customAmount || settings?.price || 0;
 
+    const currencyIso = {{ cart.currency.iso_code | json }} || "USD";
+    const formatter = new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyIso });
+
     let donationAmount = getDonationAmount(cart.total_price, mode, customAmount);
     if (donationAmount <= 0) donationAmount = 1;
 
-    label.innerText = `Donate ₹${donationAmount} and make an impact`;
+    label.innerText = `Donate ${formatter.format(donationAmount)} and make an impact`;
 
     const existing = cart.items.find(i =>
       i.properties && i.properties.type === "roundup"

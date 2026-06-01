@@ -179,7 +179,9 @@ export async function performSubscriptionAction({
                         ? "Monthly"
                         : log?.frequency === "weekly"
                             ? "Weekly"
-                            : "One-time",
+                            : log?.frequency === "daily"
+                                ? "Daily"
+                                : "One-time",
                 nextBillingDate: contract.nextBillingDate
                     ? new Date(contract.nextBillingDate).toLocaleDateString("en-US", {
                         month: "short",

@@ -43,7 +43,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             await db.recurringDonationLog.update({ where: { orderId: orderIdStr }, data: { status: "refunded" } });
             donationFound = true;
             refundAmount = recLog.donationAmount;
-            refundFreq = recLog.frequency === "weekly" ? "Weekly" : "Monthly";
+            refundFreq = recLog.frequency === "weekly" ? "Weekly" : recLog.frequency === "daily" ? "Daily" : "Monthly";
         }
 
         // 3. Round-Up Logs

@@ -116,11 +116,11 @@ export default function OneDaySubscriptionPage() {
         >
             <Layout>
 
-                {fetcher.data && !isSubmitting && (
+                {fetcher.data && !fetcher.data.success && !isSubmitting && (
                     <Layout.Section>
                         <Banner
-                            tone={fetcher.data.success ? "success" : "critical"}
-                            title={fetcher.data.success ? "Success" : "Error"}
+                            tone="critical"
+                            title="Error"
                         >
                             <p>{fetcher.data.message}</p>
                         </Banner>

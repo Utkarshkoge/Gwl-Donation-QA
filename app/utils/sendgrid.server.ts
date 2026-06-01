@@ -127,7 +127,7 @@ export async function sendDonationReceipt({
   else if (type === "reminder") title = "Upcoming Donation Reminder";
   else if (type === "recovery") title = "Payment Failed";
 
-  const isRecurring = frequency === "Monthly" || frequency === "Weekly";
+  const isRecurring = frequency === "Monthly" || frequency === "Weekly" || frequency === "Daily";
 
   let htmlContent = "";
 
@@ -243,17 +243,21 @@ export async function sendDonationReceipt({
     </div>
     `;
   } else {
-    const recurringBadge = (frequency && frequency !== "One-time")
+    const isRecurringFreq = frequency === "Monthly" || frequency === "Weekly" || frequency === "Daily";
+    const recurringBadge = isRecurringFreq
       ? `<div style="margin-bottom: 12px; padding: 8px 14px; background: #e8f5e9; border-radius: 6px; display: inline-block; font-size: 13px; color: #2e7d32;">
           <strong>${frequency} Donation</strong>
           ${nextBillingDate ? ` &mdash; next charge on <strong>${nextBillingDate}</strong>` : ""}
          </div>`
       : "";
 
+    const hasHeading = /<h[1-6][^>]*>/i.test(finalBody);
+    const mainHeading = hasHeading ? "" : `<h2 style="color: #008060;">${title}</h2>`;
+
     htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6;">
       ${isValidLogo(settings?.logoUrl) ? `<div style="margin-bottom: 24px;"><img src="${getLogoUrl(settings!.logoUrl)}" alt="Logo" style="max-height: 50px; display: block;" /></div>` : ""}
-      <h2 style="color: #008060;">${title}</h2>
+      ${mainHeading}
       ${recurringBadge}
       <div>${finalBody}</div>
       ${manageUrl ? `

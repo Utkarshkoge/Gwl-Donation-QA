@@ -17,9 +17,14 @@
 
   /* ─── Utilities ──────────────────────────────────────────────────────────── */
 
-  function formatCurrency(amount) {
+  function formatCurrency(amount, currencyIso = "USD") {
     const num = parseFloat(amount);
-    return isNaN(num) ? String(amount) : "$" + num.toFixed(2);
+    if (isNaN(num)) return String(amount);
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyIso }).format(num);
+    } catch (e) {
+      return (currencyIso === "INR" ? "₹" : "$") + num.toFixed(2);
+    }
   }
 
   function resolveApiUrl(container) {
@@ -280,6 +285,7 @@
     const disabled = campaignData.disabled === true;
     // Recurring config from the API — contains monthlyPlanId / weeklyPlanId
     const recurringConfig = campaignData.recurringConfig || null;
+    const currencyIso = container.dataset.currency || "USD";
 
     if (disabled || !campaigns.length) {
       container.style.display = "none";
@@ -302,7 +308,7 @@
       // Build amount → variantId map
       const variantMap = {};
       amounts.forEach((amt, idx) => {
-        variantMap[formatCurrency(amt)] = variantIds[idx] || null;
+        variantMap[formatCurrency(amt, currencyIso)] = variantIds[idx] || null;
       });
 
       // Numeric variant IDs for cart line detection
@@ -363,7 +369,7 @@
 
       /* Show current donation if in cart */
       if (donationLine) {
-        const linePrice = formatCurrency(donationLine.price / 100);
+        const linePrice = formatCurrency(donationLine.price / 100, currencyIso);
         html += `<div class="donation-cart-block__current">✓ Donation in cart: <strong>${linePrice}</strong></div>`;
       }
 
@@ -373,7 +379,7 @@
       if (style === "radio_button") {
         html += '<div class="donation-cart-block__radio" style="margin-bottom:12px; display:flex; flex-direction:column; gap:6px;">';
         amounts.forEach((amt) => {
-          const label = formatCurrency(amt);
+          const label = formatCurrency(amt, currencyIso);
           const isSelected = donationLine && Math.abs(donationLine.price / 100 - parseFloat(amt)) < 0.01 ? "checked" : "";
           html += `<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="radio" name="donation_amount_${container.dataset.blockId}" class="donation-cart-amount-radio" data-amount="${label}" data-variant="${variantMap[label] || ""}" ${isSelected}/>${label}</label>`;
         });
@@ -382,7 +388,7 @@
         html += '<select class="donation-cart-amount-dropdown" style="width:100%; padding:8px 12px; margin-bottom:12px; border-radius:6px; border:1px solid #d0d0d0; font-size: 0.95em;">';
         html += '<option value="" disabled ' + (!donationLine ? "selected" : "") + '>Select an amount</option>';
         amounts.forEach((amt) => {
-          const label = formatCurrency(amt);
+          const label = formatCurrency(amt, currencyIso);
           const isSelected = donationLine && Math.abs(donationLine.price / 100 - parseFloat(amt)) < 0.01 ? "selected" : "";
           html += `<option value="${label}" data-variant="${variantMap[label] || ""}" ${isSelected}>${label}</option>`;
         });
@@ -390,7 +396,7 @@
       } else {
         html += '<div class="donation-cart-block__amounts">';
         amounts.forEach((amt) => {
-          const label = formatCurrency(amt);
+          const label = formatCurrency(amt, currencyIso);
           const isSelected = donationLine && Math.abs(donationLine.price / 100 - parseFloat(amt)) < 0.01 ? "selected" : "";
           html += `<button type="button" class="donation-cart-amount-btn ${isSelected}" data-amount="${label}" data-variant="${variantMap[label] || ""}">${label}</button>`;
         });
@@ -534,7 +540,7 @@
       // The $1.00 variant is always created as a placeholder for custom amounts.
       // We use the quantity trick: qty = Math.round(customAmount) with the $1.00
       // variant so that e.g. $34 custom shows as 34 × $1.00 = $34.00 in cart.
-      const customPlaceholderVariantId = variantMap["$1.00"] || variantIds[0] || null;
+      const customPlaceholderVariantId = variantMap[formatCurrency(1.00, currencyIso)] || variantIds[0] || null;
 
       if (customInput) {
         customInput.addEventListener("input", () => {
@@ -544,7 +550,7 @@
             content.querySelectorAll(".donation-cart-amount-radio").forEach(r => r.checked = false);
             if (dropdown) dropdown.selectedIndex = 0;
 
-            selectedAmount = formatCurrency(val);
+            selectedAmount = formatCurrency(val, currencyIso);
             selectedVariantId = customPlaceholderVariantId;
             addBtn.disabled = !selectedVariantId;
           } else {
@@ -565,7 +571,7 @@
 
         const properties = {
           "Donation Campaign": activeCampaign.name,
-          "Donation Amount": isCustom ? formatCurrency(customVal) : selectedAmount,
+          "Donation Amount": isCustom ? formatCurrency(customVal, currencyIso) : selectedAmount,
         };
         if (isCustom) properties["Custom Amount"] = "true";
 
