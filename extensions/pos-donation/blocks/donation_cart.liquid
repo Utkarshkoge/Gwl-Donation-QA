@@ -124,15 +124,14 @@
       color: #004c3f;
     }
     .donation-cart-block__amounts {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
       gap: 8px;
       margin-bottom: 16px;
     }
     .donation-cart-amount-btn {
-      flex: 1;
-      min-width: 65px;
-      padding: 8px 12px;
+      width: 100%;
+      padding: 8px 4px;
       border: 2px solid #edeeef;
       background: #ffffff;
       border-radius: 8px;
@@ -142,6 +141,10 @@
       cursor: pointer;
       transition: all 0.2s ease;
       text-align: center;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      box-sizing: border-box;
     }
     .donation-cart-amount-btn:hover {
       border-color: #008060;
