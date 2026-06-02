@@ -43,10 +43,10 @@
 
       {% if donation_settings.additionalDonationEnabled != false %}
         <div id="extra-donation-wrapper" class="rd-extra-panel">
-          <p class="rd-extra-title">
+          <p class="rd-extra-title" id="extra-donation-title">
             {{ donation_settings.extraTitle | default: block.settings.extra_title }}
           </p>
-          <div class="rd-input-composition">
+          <div class="rd-input-composition" id="extra-donation-form">
             <div class="rd-input-wrapper">
               <span class="rd-currency-symbol">{{ cart.currency.symbol }}</span>
               <input 
@@ -59,6 +59,10 @@
             <button id="extra-donation-btn" class="rd-submit-btn">
               {{ donation_settings.buttonText | default: block.settings.extra_button }}
             </button>
+          </div>
+          <div class="rd-thank-you-panel" id="extra-donation-thanks" style="display: none;">
+            <span class="rd-thank-you-text" id="extra-donation-thanks-text"></span>
+            <button id="extra-donation-remove-btn" class="rd-remove-btn" type="button">Remove</button>
           </div>
         </div>
       {% endif %}
@@ -261,6 +265,39 @@
     .rd-submit-btn:active {
       transform: scale(0.98);
     }
+    .rd-thank-you-panel {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+    .rd-thank-you-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: #166534;
+    }
+    .rd-remove-btn {
+      padding: 8px 16px;
+      background: #fff;
+      color: #d82c0d;
+      border: 1.5px solid #ffdbd6;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .rd-remove-btn:hover {
+      background: #fff5f4;
+      border-color: #fdb4ac;
+      color: #c02008;
+    }
     @media screen and (max-width: 480px) {
       .rd-premium-header {
         flex-direction: column;
@@ -272,6 +309,14 @@
         flex-direction: column;
       }
       .rd-submit-btn {
+        width: 100%;
+      }
+      .rd-thank-you-panel {
+        flex-direction: column;
+        text-align: center;
+        gap: 12px;
+      }
+      .rd-remove-btn {
         width: 100%;
       }
     }
@@ -370,6 +415,12 @@
     const btn = document.getElementById("extra-donation-btn");
     const wrapper = document.getElementById("extra-donation-wrapper");
 
+    const extraTitle = document.getElementById("extra-donation-title");
+    const extraForm = document.getElementById("extra-donation-form");
+    const extraThanks = document.getElementById("extra-donation-thanks");
+    const extraThanksText = document.getElementById("extra-donation-thanks-text");
+    const extraRemoveBtn = document.getElementById("extra-donation-remove-btn");
+
     if (!checkbox) return;
 
     const cart = await getCart();
@@ -384,6 +435,40 @@
     );
     const activeRoundupAmountCents = existingItems.reduce((sum, i) => sum + i.line_price, 0);
     const activeRoundupAmount = activeRoundupAmountCents / 100.0;
+
+    const existingExtraItems = cart.items.filter(i =>
+      i.properties && i.properties.type === "extra"
+    );
+    const activeExtraAmountCents = existingExtraItems.reduce((sum, i) => sum + i.line_price, 0);
+    const activeExtraAmount = activeExtraAmountCents / 100.0;
+
+    // Auto-remove roundup if custom/extra donation is active to avoid donating twice
+    if (activeExtraAmount > 0 && activeRoundupAmount > 0) {
+      isUpdatingCart = true;
+      await removeType("roundup");
+      isUpdatingCart = false;
+      location.reload();
+      return;
+    }
+
+    // Toggle layout dynamically based on active custom/extra donation
+    const checkWrapper = checkbox.closest(".rd-check-wrapper");
+    if (activeExtraAmount > 0) {
+      if (checkWrapper) checkWrapper.style.display = "none";
+      if (extraTitle) extraTitle.style.display = "none";
+      if (extraForm) extraForm.style.display = "none";
+      if (extraThanks) {
+        extraThanks.style.display = "flex";
+        if (extraThanksText) {
+          extraThanksText.innerText = `Thank you for your donation of ${formatter.format(activeExtraAmount)}!`;
+        }
+      }
+    } else {
+      if (checkWrapper) checkWrapper.style.display = "flex";
+      if (extraTitle) extraTitle.style.display = "";
+      if (extraForm) extraForm.style.display = "flex";
+      if (extraThanks) extraThanks.style.display = "none";
+    }
 
     const baseTotalCents = cart.total_price - activeRoundupAmountCents;
     let correctRoundupAmount = 0;
@@ -492,6 +577,17 @@
         location.reload();
       });
       btn.dataset.listenerAttached = "true";
+    }
+
+    if (extraRemoveBtn && !extraRemoveBtn.dataset.listenerAttached) {
+      extraRemoveBtn.addEventListener("click", async function () {
+        if (isUpdatingCart) return;
+        isUpdatingCart = true;
+        await removeType("extra");
+        isUpdatingCart = false;
+        location.reload();
+      });
+      extraRemoveBtn.dataset.listenerAttached = "true";
     }
   }
 
