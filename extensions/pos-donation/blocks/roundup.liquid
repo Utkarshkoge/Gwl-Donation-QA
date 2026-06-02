@@ -297,6 +297,8 @@
     settings = {{ donation_settings | json }};
   } catch (e) {}
 
+  let isUpdatingCart = false;
+
   async function getCart() {
     return await fetch('/cart.js').then(r => r.json());
   }
@@ -328,7 +330,10 @@
     for (let item of items) {
       await fetch('/cart/change.js', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify({ id: item.key, quantity: 0 })
       });
     }
@@ -357,6 +362,8 @@
   }
 
   async function initDonation() {
+    if (isUpdatingCart) return;
+
     const checkbox = document.getElementById("donate-check");
     const label = document.getElementById("donation-label");
     const input = document.getElementById("extra-donation-input");
@@ -372,38 +379,100 @@
     const currencyIso = {{ cart.currency.iso_code | json }} || "USD";
     const formatter = new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyIso });
 
-    let donationAmount = getDonationAmount(cart.total_price, mode, customAmount);
-    if (donationAmount <= 0) donationAmount = 1;
-
-    label.innerText = `Donate ${formatter.format(donationAmount)} and make an impact`;
-
-    const existing = cart.items.find(i =>
+    const existingItems = cart.items.filter(i =>
       i.properties && i.properties.type === "roundup"
     );
+    const activeRoundupAmountCents = existingItems.reduce((sum, i) => sum + i.line_price, 0);
+    const activeRoundupAmount = activeRoundupAmountCents / 100.0;
 
-    if (existing) checkbox.checked = true;
+    const baseTotalCents = cart.total_price - activeRoundupAmountCents;
+    let correctRoundupAmount = 0;
+    if (baseTotalCents > 0) {
+      correctRoundupAmount = getDonationAmount(baseTotalCents, mode, customAmount);
+      if (correctRoundupAmount <= 0) correctRoundupAmount = 1;
+    }
 
-    checkbox.addEventListener("change", async function () {
-      if (this.checked) {
-        await removeType("roundup");
-        const items = breakAmount(donationAmount, "roundup");
-        if (items.length === 0) {
-            console.error("[RoundUp] No variants found.");
-            this.checked = false;
-            return;
+    const activeRoundupCents = Math.round(activeRoundupAmount * 100);
+    const correctRoundupCents = Math.round(correctRoundupAmount * 100);
+
+    // Update checkbox and label dynamically
+    if (activeRoundupAmount > 0) {
+      checkbox.checked = true;
+      label.innerText = `Thank you for your donation of ${formatter.format(activeRoundupAmount)}!`;
+    } else {
+      checkbox.checked = false;
+      label.innerText = `Donate ${formatter.format(correctRoundupAmount > 0 ? correctRoundupAmount : 1)} and make an impact`;
+    }
+
+    // Auto-adjust if active roundup amount doesn't match base cart roundup requirements
+    if (activeRoundupAmount > 0 && correctRoundupCents !== activeRoundupCents) {
+      isUpdatingCart = true;
+      await removeType("roundup");
+      if (correctRoundupCents > 0) {
+        const items = breakAmount(correctRoundupAmount, "roundup");
+        if (items.length > 0) {
+          await fetch('/cart/add.js', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ items })
+          });
         }
-        await fetch('/cart/add.js', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ items })
-        });
-      } else {
-        await removeType("roundup");
       }
+      isUpdatingCart = false;
       location.reload();
-    });
+      return;
+    }
 
-    if (btn) {
+    if (!checkbox.dataset.listenerAttached) {
+      checkbox.addEventListener("change", async function () {
+        if (isUpdatingCart) return;
+        isUpdatingCart = true;
+        
+        if (this.checked) {
+          const currentCart = await getCart();
+          const currentActiveItems = currentCart.items.filter(i =>
+            i.properties && i.properties.type === "roundup"
+          );
+          const currentActiveCents = currentActiveItems.reduce((sum, i) => sum + i.line_price, 0);
+          const currentBaseCents = currentCart.total_price - currentActiveCents;
+          
+          let freshAmount = 0;
+          if (currentBaseCents > 0) {
+            freshAmount = getDonationAmount(currentBaseCents, mode, customAmount);
+            if (freshAmount <= 0) freshAmount = 1;
+          }
+          
+          await removeType("roundup");
+          if (freshAmount > 0) {
+            const items = breakAmount(freshAmount, "roundup");
+            if (items.length === 0) {
+              console.error("[RoundUp] No variants found.");
+              this.checked = false;
+              isUpdatingCart = false;
+              return;
+            }
+            await fetch('/cart/add.js', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+              },
+              body: JSON.stringify({ items })
+            });
+          }
+        } else {
+          await removeType("roundup");
+        }
+        isUpdatingCart = false;
+        location.reload();
+      });
+      checkbox.dataset.listenerAttached = "true";
+    }
+
+    if (btn && !btn.dataset.listenerAttached) {
       btn.addEventListener("click", async function () {
         const value = parseFloat(input.value || 0);
         if (!value || value <= 0) {
@@ -414,18 +483,51 @@
         const items = breakAmount(value, "extra");
         await fetch('/cart/add.js', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
           body: JSON.stringify({ items })
         });
         location.reload();
       });
+      btn.dataset.listenerAttached = "true";
     }
   }
+
+  // Intercept Fetch
+  const originalFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const response = await originalFetch(...args);
+    const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url);
+    if (url && (url.includes('/cart/change') || url.includes('/cart/add') || url.includes('/cart/update') || url.includes('/cart/clear') || url.includes('/cart.js'))) {
+      if (!isUpdatingCart) {
+        // Only run if not triggered by our own updates, which have headers['X-Requested-With'] === 'XMLHttpRequest'
+        const options = args[1];
+        if (!options || !options.headers || options.headers['X-Requested-With'] !== 'XMLHttpRequest') {
+          setTimeout(initDonation, 500);
+        }
+      }
+    }
+    return response;
+  };
+
+  // Intercept XHR
+  const originalXHR = window.XMLHttpRequest.prototype.open;
+  window.XMLHttpRequest.prototype.open = function(method, url) {
+    this.addEventListener('load', function() {
+      if (url && (url.includes('/cart/change') || url.includes('/cart/add') || url.includes('/cart/update') || url.includes('/cart/clear') || url.includes('/cart.js'))) {
+        if (!isUpdatingCart) {
+          setTimeout(initDonation, 500);
+        }
+      }
+    });
+    return originalXHR.apply(this, arguments);
+  };
 
   document.addEventListener("DOMContentLoaded", initDonation);
   document.addEventListener("shopify:section:load", initDonation);
 })();
-
 </script>
 
 {% endif %}
