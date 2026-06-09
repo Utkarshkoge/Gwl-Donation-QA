@@ -244,9 +244,6 @@ export default function Index() {
 
   const [enabled, setEnabled] = useState(loaderData?.enabled ?? true);
   const [showOnEmptyCart, setShowOnEmptyCart] = useState(loaderData?.showOnEmptyCart ?? false);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [rating, setRating] = useState(5);
-  const [reviewText, setReviewText] = useState("");
 
   useEffect(() => {
     if (fetcher.data?.status === "success") {
@@ -278,71 +275,8 @@ export default function Index() {
     }
   };
 
-  const submitReview = () => {
-    shopify.toast.show("Thank you for your feedback!", { duration: 5000 });
-    setShowReviewModal(false);
-  };
-
   return (
     <s-page>
-      {/* --- REVIEW MODAL --- */}
-      {showReviewModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex',
-          alignItems: 'center', justifyContent: 'center'
-        }}>
-          <div style={{
-            background: 'white', padding: '32px', borderRadius: '16px',
-            width: '450px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
-          }}>
-            <s-stack gap="large">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <s-text type="strong">Write a Review</s-text>
-                <s-button variant="secondary" onClick={() => setShowReviewModal(false)}>✕</s-button>
-              </div>
-
-              <s-stack gap="base">
-                <s-text color="subdued">How would you rate your experience?</s-text>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {[1, 2, 3, 4, 5].map(star => (
-                    <button
-                      key={star}
-                      onClick={() => setRating(star)}
-                      style={{
-                        background: 'none', border: 'none', fontSize: '24px',
-                        cursor: 'pointer', color: star <= rating ? '#FFB800' : '#E5E7EB'
-                      }}
-                    >
-                      ★
-                    </button>
-                  ))}
-                </div>
-              </s-stack>
-
-              <s-stack gap="small">
-                <s-text color="subdued">Your feedback helps us improve.</s-text>
-                <textarea
-                  placeholder="Tell us what you think..."
-                  value={reviewText}
-                  onChange={(e) => setReviewText(e.target.value)}
-                  style={{
-                    width: '100%', minHeight: '120px', padding: '12px',
-                    borderRadius: '8px', border: '1px solid #E1E3E5',
-                    fontFamily: 'inherit'
-                  }}
-                />
-              </s-stack>
-
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <s-button full-width variant="primary" onClick={submitReview}>Submit Feedback</s-button>
-                <s-button full-width variant="secondary" onClick={() => setShowReviewModal(false)}>Cancel</s-button>
-              </div>
-            </s-stack>
-          </div>
-        </div>
-      )}
-
       <div style={{ paddingBottom: '32px' }}>
         <h1 style={{ fontSize: '28px', fontWeight: 700, margin: 0, paddingBottom: '8px', color: '#1A1C23' }}>Performance Dashboard</h1>
         <s-text color="subdued">Detailed overview of your donation channels and their individual performance.</s-text>
@@ -563,10 +497,7 @@ export default function Index() {
                 <div style={{ fontSize: '18px', fontWeight: 700 }}>Need custom integration or business strategy?</div>
                 <s-text color="subdued">Our dedicated impact consultants are available to help you with store setup, technical integration, and donation strategy at no extra cost.</s-text>
                 <div style={{ marginTop: '12px' }}>
-                  <s-stack direction="inline" gap="base">
-                    <s-button variant="primary" onClick={() => setShowReviewModal(true)}>Write Review</s-button>
-                    <s-button variant="secondary" onClick={handleContactSupport}>Contact Support</s-button>
-                  </s-stack>
+                  <s-button variant="primary" onClick={handleContactSupport}>Contact Support</s-button>
                 </div>
               </s-stack>
             </div>
